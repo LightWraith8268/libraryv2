@@ -124,7 +124,7 @@ fun AuthScreen(
                 )
 
                 Text(
-                    text = "Each person can use their own account. After signing in, subscribe to unlock cloud sync.",
+                    text = "Each person can use their own account. Subscribe to create a library, or join an existing one for free.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -201,7 +201,7 @@ fun AuthScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Subscribe to unlock cloud sync",
+                                text = "Subscribe to create a library. Invited members can join for free.",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
@@ -214,7 +214,7 @@ fun AuthScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Subscribe - \$0.49/month")
+                                Text("Subscribe - \$0.99/month")
                             }
                         }
                     }
@@ -276,8 +276,8 @@ fun AuthScreen(
                     ) {
                         Text("Leave Library")
                     }
-                } else if (uiState.hasProAccess) {
-                    // No library yet - create or join (only if subscribed/admin)
+                } else {
+                    // No library yet - create (requires subscription) or join (free)
                     HorizontalDivider()
 
                     Text(
@@ -285,39 +285,47 @@ fun AuthScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
 
-                    Text(
-                        text = "Create a library or join an existing one with a code from another device.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = viewModel::createLibrary,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !uiState.isLoading
-                    ) {
-                        if (uiState.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Text("Create Library")
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        HorizontalDivider(modifier = Modifier.weight(1f))
+                    if (uiState.hasProAccess) {
                         Text(
-                            text = "  OR  ",
+                            text = "Create a library or join an existing one with a code from another device.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        HorizontalDivider(modifier = Modifier.weight(1f))
+
+                        Button(
+                            onClick = viewModel::createLibrary,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isLoading
+                        ) {
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("Create Library")
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f))
+                            Text(
+                                text = "  OR  ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f))
+                        }
+                    } else {
+                        Text(
+                            text = "Join an existing library with a code, or subscribe to create your own.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     OutlinedTextField(

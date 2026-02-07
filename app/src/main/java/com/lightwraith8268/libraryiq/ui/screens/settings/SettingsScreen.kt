@@ -106,7 +106,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Subscribe to sync your library across multiple devices in real-time.",
+                            text = "Subscribe to create a library and sync across multiple devices. Invited members can join for free.",
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -121,7 +121,7 @@ fun SettingsScreen(
                             Text(
                                 if (uiState.subscriptionPrice != null)
                                     "Subscribe for ${uiState.subscriptionPrice}/month"
-                                else "Subscribe - \$0.49/month"
+                                else "Subscribe - \$0.99/month"
                             )
                         }
                         TextButton(onClick = viewModel::restorePurchases) {
@@ -170,9 +170,9 @@ fun SettingsScreen(
                             text = if (uiState.isSyncEnabled)
                                 "Library syncs across devices in real-time"
                             else if (!uiState.isSignedIn)
-                                "Sign in and subscribe to sync"
+                                "Sign in to create or join a library"
                             else if (!uiState.hasProAccess)
-                                "Subscribe to unlock cloud sync"
+                                "Subscribe to create a library, or join one for free"
                             else "Create or join a library to sync",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -215,7 +215,7 @@ fun SettingsScreen(
             if (!uiState.isSignedIn) {
                 // --- Sign In / Sign Up ---
                 Text(
-                    text = "Each person uses their own account. After signing in, subscribe to enable cloud sync.",
+                    text = "Each person uses their own account. Subscribe to create a library, or join an existing one for free.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -329,40 +329,48 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Leave Library")
                     }
-                } else if (uiState.hasProAccess) {
-                    // Create or join library (only if subscribed or admin)
-                    Text(
-                        text = "Create a library or join an existing one to sync between devices.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = viewModel::createLibrary,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !uiState.isLoading
-                    ) {
-                        if (uiState.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Text("Create Library")
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        HorizontalDivider(modifier = Modifier.weight(1f))
+                } else {
+                    // No library yet - create (requires subscription) or join (free)
+                    if (uiState.hasProAccess) {
                         Text(
-                            "  OR  ",
+                            text = "Create a library or join an existing one to sync between devices.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        HorizontalDivider(modifier = Modifier.weight(1f))
+
+                        Button(
+                            onClick = viewModel::createLibrary,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isLoading
+                        ) {
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("Create Library")
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f))
+                            Text(
+                                "  OR  ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f))
+                        }
+                    } else {
+                        Text(
+                            text = "Join an existing library with a code, or subscribe to create your own.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     OutlinedTextField(

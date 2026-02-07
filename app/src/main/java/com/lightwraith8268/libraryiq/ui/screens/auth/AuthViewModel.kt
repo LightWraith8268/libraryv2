@@ -139,7 +139,7 @@ class AuthViewModel @Inject constructor(
 
     fun createLibrary() {
         if (!billingManager.hasProAccess) {
-            _uiState.update { it.copy(error = "A subscription is required to use cloud sync") }
+            _uiState.update { it.copy(error = "A subscription is required to create a library") }
             return
         }
         viewModelScope.launch {
@@ -169,10 +169,6 @@ class AuthViewModel @Inject constructor(
     }
 
     fun joinLibrary() {
-        if (!billingManager.hasProAccess) {
-            _uiState.update { it.copy(error = "A subscription is required to use cloud sync") }
-            return
-        }
         val code = _uiState.value.joinCode.trim()
         if (code.isBlank()) {
             _uiState.update { it.copy(error = "Enter a library code") }
