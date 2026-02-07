@@ -134,21 +134,15 @@ class FirestoreSync @Inject constructor(
         return try {
             val code = generateLibraryCode()
             val userId = getUserId()!!
-            val email = userEmail ?: ""
 
-            // Create the library document
+            // Create the library document with members array for security rules
             firestore.collection("libraries").document(code).set(
                 mapOf(
                     "createdBy" to userId,
-                    "createdAt" to System.currentTimeMillis()
+                    "createdAt" to System.currentTimeMillis(),
+                    "members" to listOf(userId)
                 )
             ).await()
-
-            // Add self as member
-            firestore.collection("libraries").document(code)
-                .collection("members").document(userId).set(
-                    mapOf("email" to email, "joinedAt" to System.currentTimeMillis())
-                ).await()
 
             libraryCode = code
             Result.success(code)
@@ -172,13 +166,11 @@ class FirestoreSync @Inject constructor(
                 return Result.failure(Exception("Library not found. Check the code and try again."))
             }
 
-            // Add self as member
+            // Add self to members array
             val userId = getUserId()!!
-            val email = userEmail ?: ""
-            firestore.collection("libraries").document(normalizedCode)
-                .collection("members").document(userId).set(
-                    mapOf("email" to email, "joinedAt" to System.currentTimeMillis())
-                ).await()
+            firestore.collection("libraries").document(normalizedCode).update(
+                "members", com.google.firebase.firestore.FieldValue.arrayUnion(userId)
+            ).await()
 
             libraryCode = normalizedCode
             Result.success(Unit)
