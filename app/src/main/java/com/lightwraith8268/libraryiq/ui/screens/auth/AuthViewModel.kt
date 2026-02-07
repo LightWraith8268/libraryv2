@@ -1,7 +1,9 @@
 package com.lightwraith8268.libraryiq.ui.screens.auth
 
+import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lightwraith8268.libraryiq.data.billing.BillingManager
 import com.lightwraith8268.libraryiq.data.remote.FirestoreSync
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +17,7 @@ data class AuthUiState(
     val isSignedIn: Boolean = false,
     val userEmail: String? = null,
     val libraryCode: String? = null,
+    val hasProAccess: Boolean = false,
     val email: String = "",
     val password: String = "",
     val joinCode: String = "",
@@ -26,7 +29,8 @@ data class AuthUiState(
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val firestoreSync: FirestoreSync
+    private val firestoreSync: FirestoreSync,
+    private val billingManager: BillingManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -36,17 +40,26 @@ class AuthViewModel @Inject constructor(
         refreshState()
         viewModelScope.launch {
             firestoreSync.observeAuthState().collect { isSignedIn ->
+                billingManager.refreshAdminStatus()
                 refreshState()
             }
+        }
+        viewModelScope.launch {
+            billingManager.isSubscribed.collect { refreshState() }
+        }
+        viewModelScope.launch {
+            billingManager.isAdmin.collect { refreshState() }
         }
     }
 
     private fun refreshState() {
+        billingManager.refreshAdminStatus()
         _uiState.update {
             it.copy(
                 isSignedIn = firestoreSync.isSignedIn,
                 userEmail = firestoreSync.userEmail,
-                libraryCode = firestoreSync.libraryCode
+                libraryCode = firestoreSync.libraryCode,
+                hasProAccess = billingManager.hasProAccess
             )
         }
     }
@@ -70,6 +83,7 @@ class AuthViewModel @Inject constructor(
             val result = firestoreSync.signIn(state.email.trim(), state.password)
             result.fold(
                 onSuccess = {
+                    billingManager.refreshAdminStatus()
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
                     if (firestoreSync.isSyncEnabled) {
@@ -101,6 +115,7 @@ class AuthViewModel @Inject constructor(
             val result = firestoreSync.signUp(state.email.trim(), state.password)
             result.fold(
                 onSuccess = {
+                    billingManager.refreshAdminStatus()
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
                     if (firestoreSync.isSyncEnabled) {
@@ -118,10 +133,15 @@ class AuthViewModel @Inject constructor(
 
     fun signOut() {
         firestoreSync.signOut()
+        billingManager.refreshAdminStatus()
         refreshState()
     }
 
     fun createLibrary() {
+        if (!billingManager.hasProAccess) {
+            _uiState.update { it.copy(error = "A subscription is required to create a library") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             val result = firestoreSync.createLibrary()
@@ -134,7 +154,6 @@ class AuthViewModel @Inject constructor(
                             message = "Library created! Share code: $code with others to join."
                         )
                     }
-                    // Start syncing
                     firestoreSync.startListening()
                 },
                 onFailure = { e ->
@@ -169,7 +188,6 @@ class AuthViewModel @Inject constructor(
                             message = "Joined library successfully!"
                         )
                     }
-                    // Start syncing
                     firestoreSync.startListening()
                 },
                 onFailure = { e ->
@@ -188,5 +206,9 @@ class AuthViewModel @Inject constructor(
         firestoreSync.leaveLibrary()
         refreshState()
         _uiState.update { it.copy(message = "Left library") }
+    }
+
+    fun launchSubscription(activity: Activity) {
+        billingManager.launchSubscription(activity)
     }
 }

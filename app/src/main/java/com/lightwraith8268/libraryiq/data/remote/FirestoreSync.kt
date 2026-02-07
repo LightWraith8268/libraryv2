@@ -38,6 +38,10 @@ class FirestoreSync @Inject constructor(
     private val collectionDao: CollectionDao,
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        const val MAX_MEMBERS = 10
+    }
+
     private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
     private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
     private val prefs: SharedPreferences by lazy {
@@ -153,6 +157,7 @@ class FirestoreSync @Inject constructor(
 
     /**
      * Joins an existing shared library with the given code.
+     * Enforces a maximum of MAX_MEMBERS per library.
      */
     suspend fun joinLibrary(code: String): Result<Unit> {
         if (!isSignedIn) return Result.failure(Exception("Not signed in"))
@@ -166,8 +171,14 @@ class FirestoreSync @Inject constructor(
                 return Result.failure(Exception("Library not found. Check the code and try again."))
             }
 
-            // Add self to members array
+            // Check member cap
+            val members = doc.get("members") as? List<*> ?: emptyList<String>()
             val userId = getUserId()!!
+            if (!members.contains(userId) && members.size >= MAX_MEMBERS) {
+                return Result.failure(Exception("This library has reached its maximum of $MAX_MEMBERS members."))
+            }
+
+            // Add self to members array
             firestore.collection("libraries").document(normalizedCode).update(
                 "members", com.google.firebase.firestore.FieldValue.arrayUnion(userId)
             ).await()

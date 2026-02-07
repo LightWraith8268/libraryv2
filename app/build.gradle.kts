@@ -107,6 +107,9 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
 
+    // Google Play Billing
+    implementation("com.android.billingclient:billing-ktx:6.1.0")
+
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
 }
