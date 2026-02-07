@@ -1,8 +1,10 @@
 package com.lightwraith8268.libraryiq.ui.screens.settings
 
+import android.app.Activity
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lightwraith8268.libraryiq.data.billing.BillingManager
 import com.lightwraith8268.libraryiq.data.local.AppDatabase
 import com.lightwraith8268.libraryiq.data.remote.FirestoreSync
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,6 +21,10 @@ data class SettingsUiState(
     val userEmail: String? = null,
     val libraryCode: String? = null,
     val isSyncEnabled: Boolean = false,
+    val hasProAccess: Boolean = false,
+    val isSubscribed: Boolean = false,
+    val isAdmin: Boolean = false,
+    val subscriptionPrice: String? = null,
     val email: String = "",
     val password: String = "",
     val joinCode: String = "",
@@ -33,6 +39,7 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val firestoreSync: FirestoreSync,
+    private val billingManager: BillingManager,
     private val database: AppDatabase,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -44,18 +51,36 @@ class SettingsViewModel @Inject constructor(
         refreshState()
         viewModelScope.launch {
             firestoreSync.observeAuthState().collect {
+                billingManager.refreshAdminStatus()
                 refreshState()
+            }
+        }
+        viewModelScope.launch {
+            billingManager.isSubscribed.collect { refreshState() }
+        }
+        viewModelScope.launch {
+            billingManager.isAdmin.collect { refreshState() }
+        }
+        viewModelScope.launch {
+            billingManager.productDetails.collect { details ->
+                val price = details?.subscriptionOfferDetails?.firstOrNull()
+                    ?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
+                _uiState.update { it.copy(subscriptionPrice = price) }
             }
         }
     }
 
     private fun refreshState() {
+        billingManager.refreshAdminStatus()
         _uiState.update {
             it.copy(
                 isSignedIn = firestoreSync.isSignedIn,
                 userEmail = firestoreSync.userEmail,
                 libraryCode = firestoreSync.libraryCode,
-                isSyncEnabled = firestoreSync.isSyncEnabled
+                isSyncEnabled = firestoreSync.isSyncEnabled,
+                hasProAccess = billingManager.hasProAccess,
+                isSubscribed = billingManager.isSubscribed.value,
+                isAdmin = billingManager.isAdmin.value
             )
         }
     }
@@ -81,6 +106,7 @@ class SettingsViewModel @Inject constructor(
             val result = firestoreSync.signIn(state.email.trim(), state.password)
             result.fold(
                 onSuccess = {
+                    billingManager.refreshAdminStatus()
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
                     if (firestoreSync.isSyncEnabled) {
@@ -111,6 +137,7 @@ class SettingsViewModel @Inject constructor(
             val result = firestoreSync.signUp(state.email.trim(), state.password)
             result.fold(
                 onSuccess = {
+                    billingManager.refreshAdminStatus()
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
                     if (firestoreSync.isSyncEnabled) {
@@ -128,10 +155,15 @@ class SettingsViewModel @Inject constructor(
 
     fun signOut() {
         firestoreSync.signOut()
+        billingManager.refreshAdminStatus()
         refreshState()
     }
 
     fun createLibrary() {
+        if (!billingManager.hasProAccess) {
+            _uiState.update { it.copy(error = "A subscription is required to use cloud sync") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             val result = firestoreSync.createLibrary()
@@ -156,6 +188,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun joinLibrary() {
+        if (!billingManager.hasProAccess) {
+            _uiState.update { it.copy(error = "A subscription is required to use cloud sync") }
+            return
+        }
         val code = _uiState.value.joinCode.trim()
         if (code.isBlank()) {
             _uiState.update { it.copy(error = "Enter a library code") }
@@ -185,6 +221,15 @@ class SettingsViewModel @Inject constructor(
         firestoreSync.leaveLibrary()
         refreshState()
         _uiState.update { it.copy(message = "Left library") }
+    }
+
+    fun launchSubscription(activity: Activity) {
+        billingManager.launchSubscription(activity)
+    }
+
+    fun restorePurchases() {
+        billingManager.refresh()
+        _uiState.update { it.copy(message = "Checking for existing purchases...") }
     }
 
     fun showClearDataDialog() = _uiState.update { it.copy(showClearDataDialog = true) }

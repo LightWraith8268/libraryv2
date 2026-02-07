@@ -1,5 +1,6 @@
 package com.lightwraith8268.libraryiq.ui.screens.settings
 
+import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncDisabled
 import androidx.compose.material3.AlertDialog
@@ -41,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +64,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -74,6 +78,59 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // --- Subscription Section ---
+            if (uiState.isSignedIn && !uiState.hasProAccess) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Unlock Cloud Sync",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Subscribe to sync your library across multiple devices in real-time.",
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                (context as? Activity)?.let { viewModel.launchSubscription(it) }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                if (uiState.subscriptionPrice != null)
+                                    "Subscribe for ${uiState.subscriptionPrice}/month"
+                                else "Subscribe - \$0.49/month"
+                            )
+                        }
+                        TextButton(onClick = viewModel::restorePurchases) {
+                            Text("Restore Purchases")
+                        }
+                    }
+                }
+            }
+
             // --- Sync Section ---
             Text(
                 text = "Sync & Account",
@@ -112,9 +169,44 @@ fun SettingsScreen(
                         Text(
                             text = if (uiState.isSyncEnabled)
                                 "Library syncs across devices in real-time"
-                            else "Sign in and create or join a library to sync",
+                            else if (!uiState.isSignedIn)
+                                "Sign in and subscribe to sync"
+                            else if (!uiState.hasProAccess)
+                                "Subscribe to unlock cloud sync"
+                            else "Create or join a library to sync",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // Pro status badge
+            if (uiState.isSignedIn && uiState.hasProAccess) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = if (uiState.isAdmin) "Admin Access"
+                            else "Pro Subscriber",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }
@@ -123,7 +215,7 @@ fun SettingsScreen(
             if (!uiState.isSignedIn) {
                 // --- Sign In / Sign Up ---
                 Text(
-                    text = "Each person uses their own account. After signing in, create or join a library.",
+                    text = "Each person uses their own account. After signing in, subscribe to enable cloud sync.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -237,8 +329,8 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Leave Library")
                     }
-                } else {
-                    // Create or join library
+                } else if (uiState.hasProAccess) {
+                    // Create or join library (only if subscribed or admin)
                     Text(
                         text = "Create a library or join an existing one to sync between devices.",
                         style = MaterialTheme.typography.bodySmall,

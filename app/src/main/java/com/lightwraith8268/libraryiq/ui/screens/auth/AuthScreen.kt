@@ -1,5 +1,6 @@
 package com.lightwraith8268.libraryiq.ui.screens.auth
 
+import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncDisabled
 import androidx.compose.material3.Button
@@ -36,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +59,7 @@ fun AuthScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -120,7 +124,7 @@ fun AuthScreen(
                 )
 
                 Text(
-                    text = "Each person can use their own account. After signing in, create or join a library to sync.",
+                    text = "Each person can use their own account. After signing in, subscribe to unlock cloud sync.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -175,6 +179,46 @@ fun AuthScreen(
                     text = "Signed in as: ${uiState.userEmail}",
                     style = MaterialTheme.typography.bodyMedium
                 )
+
+                // Subscription prompt if not pro
+                if (!uiState.hasProAccess) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Subscribe to unlock cloud sync",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    (context as? Activity)?.let {
+                                        viewModel.launchSubscription(it)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Subscribe - \$0.49/month")
+                            }
+                        }
+                    }
+                }
 
                 if (uiState.libraryCode != null) {
                     // Show current library code
@@ -232,8 +276,8 @@ fun AuthScreen(
                     ) {
                         Text("Leave Library")
                     }
-                } else {
-                    // No library yet - create or join
+                } else if (uiState.hasProAccess) {
+                    // No library yet - create or join (only if subscribed/admin)
                     HorizontalDivider()
 
                     Text(
