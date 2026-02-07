@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.booklib.app"
+    namespace = "com.lightwraith8268.libraryiq"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.booklib.app"
+        applicationId = "com.lightwraith8268.libraryiq"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

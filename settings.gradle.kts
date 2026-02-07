@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BookLib"
+rootProject.name = "LibraryIQ"
 include(":app")
