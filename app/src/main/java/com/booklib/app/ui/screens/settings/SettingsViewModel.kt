@@ -83,6 +83,9 @@ class SettingsViewModel @Inject constructor(
                 onSuccess = {
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
+                    if (firestoreSync.isSyncEnabled) {
+                        firestoreSync.startListening()
+                    }
                 },
                 onFailure = { e ->
                     _uiState.update {
@@ -110,6 +113,9 @@ class SettingsViewModel @Inject constructor(
                 onSuccess = {
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
+                    if (firestoreSync.isSyncEnabled) {
+                        firestoreSync.startListening()
+                    }
                 },
                 onFailure = { e ->
                     _uiState.update {
@@ -186,7 +192,11 @@ class SettingsViewModel @Inject constructor(
 
     fun clearAllData() {
         viewModelScope.launch {
+            firestoreSync.stopListening()
             database.clearAllTables()
+            if (firestoreSync.isSyncEnabled) {
+                firestoreSync.startListening()
+            }
             _uiState.update {
                 it.copy(
                     showClearDataDialog = false,

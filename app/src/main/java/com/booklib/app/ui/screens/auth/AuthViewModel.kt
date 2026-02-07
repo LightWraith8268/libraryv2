@@ -72,6 +72,9 @@ class AuthViewModel @Inject constructor(
                 onSuccess = {
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
+                    if (firestoreSync.isSyncEnabled) {
+                        firestoreSync.startListening()
+                    }
                 },
                 onFailure = { e ->
                     _uiState.update {
@@ -100,6 +103,9 @@ class AuthViewModel @Inject constructor(
                 onSuccess = {
                     refreshState()
                     _uiState.update { it.copy(isLoading = false, password = "") }
+                    if (firestoreSync.isSyncEnabled) {
+                        firestoreSync.startListening()
+                    }
                 },
                 onFailure = { e ->
                     _uiState.update {
