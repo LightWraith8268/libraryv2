@@ -131,7 +131,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            message = "Library created! Share this code: $code"
+                            message = "Library created! Share code: $code with others to join."
                         )
                     }
                     // Start syncing
@@ -187,6 +187,6 @@ class AuthViewModel @Inject constructor(
     fun leaveLibrary() {
         firestoreSync.leaveLibrary()
         refreshState()
-        _uiState.update { it.copy(message = "Left shared library") }
+        _uiState.update { it.copy(message = "Left library") }
     }
 }

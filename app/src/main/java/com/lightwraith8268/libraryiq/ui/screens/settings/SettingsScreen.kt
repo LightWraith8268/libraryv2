@@ -112,7 +112,7 @@ fun SettingsScreen(
                         Text(
                             text = if (uiState.isSyncEnabled)
                                 "Library syncs across devices in real-time"
-                            else "Sign in and set up a shared library to sync",
+                            else "Sign in and create or join a library to sync",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -123,7 +123,7 @@ fun SettingsScreen(
             if (!uiState.isSignedIn) {
                 // --- Sign In / Sign Up ---
                 Text(
-                    text = "Each person uses their own account. After signing in, create or join a shared library.",
+                    text = "Each person uses their own account. After signing in, create or join a library.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -194,7 +194,7 @@ fun SettingsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "Shared Library Code",
+                                text = "Library Code",
                                 style = MaterialTheme.typography.labelLarge
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -235,12 +235,12 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.CloudOff, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Leave Shared Library")
+                        Text("Leave Library")
                     }
                 } else {
                     // Create or join library
                     Text(
-                        text = "Set up a shared library to sync between devices.",
+                        text = "Create a library or join an existing one to sync between devices.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -256,7 +256,7 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
-                            Text("Create New Shared Library")
+                            Text("Create Library")
                         }
                     }
 
@@ -330,7 +330,7 @@ fun SettingsScreen(
             }
 
             Text(
-                text = "This removes all books and collections from this device. If sync is enabled, you can re-download from the shared library by re-joining.",
+                text = "This removes all books and collections from this device. If sync is enabled, you can re-download by re-joining the library.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

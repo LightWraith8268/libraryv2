@@ -103,7 +103,7 @@ fun AuthScreen(
                         )
                         if (uiState.libraryCode != null) {
                             Text(
-                                text = "Connected to shared library",
+                                text = "Connected to library",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -120,7 +120,7 @@ fun AuthScreen(
                 )
 
                 Text(
-                    text = "Each person can use their own account. After signing in, create or join a shared library to sync.",
+                    text = "Each person can use their own account. After signing in, create or join a library to sync.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -181,7 +181,7 @@ fun AuthScreen(
                     HorizontalDivider()
 
                     Text(
-                        text = "Shared Library Code",
+                        text = "Library Code",
                         style = MaterialTheme.typography.titleMedium
                     )
 
@@ -230,19 +230,19 @@ fun AuthScreen(
                         onClick = viewModel::leaveLibrary,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Leave Shared Library")
+                        Text("Leave Library")
                     }
                 } else {
                     // No library yet - create or join
                     HorizontalDivider()
 
                     Text(
-                        text = "Set Up Shared Library",
+                        text = "Set Up Library",
                         style = MaterialTheme.typography.titleMedium
                     )
 
                     Text(
-                        text = "Create a new shared library or join an existing one with a code from another device.",
+                        text = "Create a library or join an existing one with a code from another device.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -258,7 +258,7 @@ fun AuthScreen(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
-                            Text("Create New Shared Library")
+                            Text("Create Library")
                         }
                     }
 

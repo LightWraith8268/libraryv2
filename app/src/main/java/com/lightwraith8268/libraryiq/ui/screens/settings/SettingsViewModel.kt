@@ -141,7 +141,7 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            message = "Library created! Share code: $code"
+                            message = "Library created! Share code: $code with others to join."
                         )
                     }
                     firestoreSync.startListening()
@@ -184,7 +184,7 @@ class SettingsViewModel @Inject constructor(
     fun leaveLibrary() {
         firestoreSync.leaveLibrary()
         refreshState()
-        _uiState.update { it.copy(message = "Left shared library") }
+        _uiState.update { it.copy(message = "Left library") }
     }
 
     fun showClearDataDialog() = _uiState.update { it.copy(showClearDataDialog = true) }
