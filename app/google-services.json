@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "457735529333-7862qlsdn80n5ms228j2dqm3nasb2fn2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lightwraith8268.libraryiq",
+            "certificate_hash": "999f78c7ab05b86739e8b7a90d26e748131f8aad"
+          }
+        },
+        {
           "client_id": "457735529333-rrqnjbiqeqrrggs2ctgi7o4r9tjo3e0j.apps.googleusercontent.com",
           "client_type": 3
         }
