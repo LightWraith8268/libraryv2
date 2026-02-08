@@ -1,5 +1,6 @@
 package com.lightwraith8268.libraryiq.data.repository
 
+import android.util.Log
 import com.lightwraith8268.libraryiq.BuildConfig
 import com.lightwraith8268.libraryiq.data.local.dao.BookDao
 import com.lightwraith8268.libraryiq.data.local.entity.Book
@@ -63,23 +64,34 @@ class BookRepository @Inject constructor(
      * Merges results to get the most complete metadata.
      */
     suspend fun lookupByIsbn(isbn: String): Book? {
+        Log.d(TAG, "lookupByIsbn: $isbn")
+
         // Check local database first
         val existingBook = bookDao.getBookByIsbn(isbn)
-        if (existingBook != null) return existingBook
+        if (existingBook != null) {
+            Log.d(TAG, "Found in local database: ${existingBook.title}")
+            return existingBook
+        }
 
         // Try Google Books first (usually fastest)
         val googleBook = try {
             val response = bookApiService.searchByIsbn(BookApiService.buildIsbnQuery(isbn))
-            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }
-        } catch (_: Exception) {
+            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
+                Log.d(TAG, "Google Books: ${it?.title ?: "not found"}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Google Books error: ${e.message}")
             null
         }
 
         // Try Open Library for additional/fallback metadata
         val openLibraryBook = try {
             val edition = openLibraryApiService.getByIsbn(isbn)
-            openLibraryEditionToBook(edition, isbn)
-        } catch (_: Exception) {
+            openLibraryEditionToBook(edition, isbn).also {
+                Log.d(TAG, "Open Library: ${it.title}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Open Library error: ${e.message}")
             null
         }
 
@@ -91,21 +103,30 @@ class BookRepository @Inject constructor(
                 )
                 response.data?.editions?.firstOrNull()?.let {
                     hardcoverEditionToBook(it, isbn)
+                }.also {
+                    Log.d(TAG, "Hardcover: ${it?.title ?: "not found"}")
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Hardcover error: ${e.message}")
                 null
             }
         } else {
+            Log.d(TAG, "Hardcover: skipped (no API token)")
             null
         }
 
         // Merge all available results, preferring earlier sources
         val sources = listOfNotNull(googleBook, openLibraryBook, hardcoverBook)
+        Log.d(TAG, "Sources found: ${sources.size}/3")
         return when {
             sources.isEmpty() -> null
             sources.size == 1 -> sources.first()
             else -> sources.drop(1).fold(sources.first()) { acc, book -> mergeBooks(acc, book) }
         }
+    }
+
+    companion object {
+        private const val TAG = "BookRepository"
     }
 
     private fun googleBookToBook(item: GoogleBookItem, scannedIsbn: String? = null): Book {

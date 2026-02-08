@@ -7,6 +7,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -78,14 +85,20 @@ fun ScannerScreen(
         )
 
         if (uiState.isScanning) {
-            CameraPreviewWithScanner(
-                onBarcodeDetected = viewModel::onBarcodeDetected,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            )
+            ) {
+                CameraPreviewWithScanner(
+                    onBarcodeDetected = viewModel::onBarcodeDetected,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Aim bar overlay
+                ScannerOverlay(modifier = Modifier.fillMaxSize())
+            }
             Text(
-                text = "Point camera at a book's barcode",
+                text = "Align barcode within the frame",
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -167,6 +180,77 @@ fun ScannerScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ScannerOverlay(modifier: Modifier = Modifier) {
+    val accentColor = MaterialTheme.colorScheme.primary
+    Canvas(modifier = modifier) {
+        val canvasWidth = size.width
+        val canvasHeight = size.height
+
+        // Draw semi-transparent dark overlay
+        drawRect(color = Color.Black.copy(alpha = 0.4f))
+
+        // Cut out the scan area (center rectangle)
+        val rectWidth = canvasWidth * 0.8f
+        val rectHeight = rectWidth * 0.35f
+        val left = (canvasWidth - rectWidth) / 2
+        val top = (canvasHeight - rectHeight) / 2
+
+        // Clear the scan area
+        drawRoundRect(
+            color = Color.Transparent,
+            topLeft = Offset(left, top),
+            size = Size(rectWidth, rectHeight),
+            cornerRadius = CornerRadius(16f, 16f),
+            blendMode = BlendMode.Clear
+        )
+
+        // Draw border around scan area
+        drawRoundRect(
+            color = accentColor,
+            topLeft = Offset(left, top),
+            size = Size(rectWidth, rectHeight),
+            cornerRadius = CornerRadius(16f, 16f),
+            style = Stroke(width = 4.dp.toPx())
+        )
+
+        // Draw corner accents
+        val cornerLen = 32.dp.toPx()
+        val strokeW = 4.dp.toPx()
+        val corners = listOf(
+            // Top-left
+            Pair(Offset(left, top + cornerLen), Offset(left, top)),
+            Pair(Offset(left, top), Offset(left + cornerLen, top)),
+            // Top-right
+            Pair(Offset(left + rectWidth - cornerLen, top), Offset(left + rectWidth, top)),
+            Pair(Offset(left + rectWidth, top), Offset(left + rectWidth, top + cornerLen)),
+            // Bottom-left
+            Pair(Offset(left, top + rectHeight - cornerLen), Offset(left, top + rectHeight)),
+            Pair(Offset(left, top + rectHeight), Offset(left + cornerLen, top + rectHeight)),
+            // Bottom-right
+            Pair(Offset(left + rectWidth - cornerLen, top + rectHeight), Offset(left + rectWidth, top + rectHeight)),
+            Pair(Offset(left + rectWidth, top + rectHeight - cornerLen), Offset(left + rectWidth, top + rectHeight))
+        )
+        corners.forEach { (start, end) ->
+            drawLine(
+                color = Color.White,
+                start = start,
+                end = end,
+                strokeWidth = strokeW * 2
+            )
+        }
+
+        // Draw horizontal aim line through center
+        val lineY = top + rectHeight / 2
+        drawLine(
+            color = accentColor.copy(alpha = 0.7f),
+            start = Offset(left + 16.dp.toPx(), lineY),
+            end = Offset(left + rectWidth - 16.dp.toPx(), lineY),
+            strokeWidth = 2.dp.toPx()
+        )
     }
 }
 
