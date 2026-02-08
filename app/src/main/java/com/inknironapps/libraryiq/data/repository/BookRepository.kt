@@ -56,13 +56,15 @@ class BookRepository @Inject constructor(
     }
 
     /**
-     * Looks up a book by ISBN using multiple sources:
+     * Looks up a book by ISBN using multiple sources and strategies:
      * 1. Local database
-     * 2. Google Books API
-     * 3. Open Library API
-     * 4. Open Library Search API (fallback if direct lookup fails)
-     * 5. Hardcover API (if API token is configured)
-     * Merges results to get the most complete metadata.
+     * 2. Google Books (isbn: prefix)
+     * 3. Google Books (general search - catches books not formally indexed by ISBN)
+     * 4. Google Books (ISBN-10 variant if ISBN-13 was scanned)
+     * 5. Open Library (direct ISBN endpoint)
+     * 6. Open Library (search endpoint)
+     * 7. Hardcover API (if token configured)
+     * Merges results for the most complete metadata.
      */
     suspend fun lookupByIsbn(isbn: String): Book? {
         Log.d(TAG, "lookupByIsbn: $isbn")
@@ -74,76 +76,143 @@ class BookRepository @Inject constructor(
             return existingBook
         }
 
-        // Try Google Books first (usually fastest)
-        val googleBook = try {
-            val response = bookApiService.searchByIsbn(BookApiService.buildIsbnQuery(isbn))
-            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
-                Log.d(TAG, "Google Books: ${it?.title ?: "not found"}")
+        val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) {
+            convertIsbn13ToIsbn10(isbn)
+        } else null
+        if (isbn10 != null) Log.d(TAG, "ISBN-10 variant: $isbn10")
+
+        // 1. Google Books strict ISBN search
+        val googleBook = tryGoogleBooksIsbn(isbn)
+
+        // 2. Google Books general search (ISBN as plain text, catches non-indexed books)
+        val googleGeneralBook = if (googleBook == null) {
+            tryGoogleBooksGeneral(isbn)
+        } else null
+
+        // 3. Google Books ISBN-10 variant (some databases only index ISBN-10)
+        val googleIsbn10Book = if (googleBook == null && googleGeneralBook == null && isbn10 != null) {
+            tryGoogleBooksIsbn(isbn10)?.copy(isbn = isbn)
+        } else null
+
+        // 4. Open Library direct + search fallback
+        val openLibraryBook = tryOpenLibrary(isbn)
+
+        // 5. Hardcover
+        val hardcoverBook = tryHardcover(isbn)
+
+        // Collect all results and merge
+        val sources = listOfNotNull(
+            googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook
+        )
+        Log.d(TAG, "Total sources found: ${sources.size}")
+
+        if (sources.isNotEmpty()) {
+            val merged = sources.drop(1).fold(sources.first()) { acc, book ->
+                mergeBooks(acc, book)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Google Books error: ${e.message}")
-            null
+            Log.d(TAG, "Final result: ${merged.title} by ${merged.author}")
+            return merged
         }
 
-        // Try Open Library direct ISBN lookup
-        val openLibraryBook = try {
+        Log.d(TAG, "No sources found for ISBN: $isbn")
+        return null
+    }
+
+    private suspend fun tryGoogleBooksIsbn(isbn: String): Book? {
+        return try {
+            val response = bookApiService.searchByIsbn("isbn:$isbn")
+            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
+                Log.d(TAG, "Google Books (isbn:$isbn): ${it?.title ?: "not found"}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Google Books (isbn:) error: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryGoogleBooksGeneral(isbn: String): Book? {
+        return try {
+            val response = bookApiService.searchByIsbn(isbn)
+            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
+                Log.d(TAG, "Google Books (general): ${it?.title ?: "not found"}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Google Books (general) error: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryOpenLibrary(isbn: String): Book? {
+        // Direct ISBN endpoint
+        val direct = try {
             val edition = openLibraryApiService.getByIsbn(isbn)
             openLibraryEditionToBook(edition, isbn).also {
                 Log.d(TAG, "Open Library (direct): ${it.title}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Open Library (direct) error: ${e.message}")
-            // Fallback: try Open Library search endpoint
-            try {
-                val searchResponse = openLibraryApiService.search(isbn)
-                searchResponse.docs?.firstOrNull()?.let { doc ->
-                    Book(
-                        title = doc.title ?: "Unknown Title",
-                        author = doc.authorNames?.joinToString(", ") ?: "Unknown Author",
-                        isbn = isbn,
-                        coverUrl = doc.coverId?.let { OpenLibraryApiService.coverUrl(it, "L") },
-                        pageCount = doc.pageCount,
-                        publisher = doc.publishers?.firstOrNull(),
-                        publishedDate = doc.publishDates?.firstOrNull(),
-                        subjects = doc.subjects?.take(10)?.joinToString(", ")
-                    )
-                }.also {
-                    Log.d(TAG, "Open Library (search): ${it?.title ?: "not found"}")
-                }
-            } catch (e2: Exception) {
-                Log.e(TAG, "Open Library (search) error: ${e2.message}")
-                null
-            }
-        }
-
-        // Try Hardcover as third source (if API token is configured)
-        val hardcoverBook = if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
-            try {
-                val response = hardcoverApiService.query(
-                    HardcoverApiService.buildIsbnQuery(isbn)
-                )
-                response.data?.editions?.firstOrNull()?.let {
-                    hardcoverEditionToBook(it, isbn)
-                }.also {
-                    Log.d(TAG, "Hardcover: ${it?.title ?: "not found"}")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Hardcover error: ${e.message}")
-                null
-            }
-        } else {
-            Log.d(TAG, "Hardcover: skipped (no API token)")
             null
         }
 
-        // Merge all available results, preferring earlier sources
-        val sources = listOfNotNull(googleBook, openLibraryBook, hardcoverBook)
-        Log.d(TAG, "Sources found: ${sources.size}/3")
-        return when {
-            sources.isEmpty() -> null
-            sources.size == 1 -> sources.first()
-            else -> sources.drop(1).fold(sources.first()) { acc, book -> mergeBooks(acc, book) }
+        if (direct != null) return direct
+
+        // Search endpoint fallback
+        return try {
+            val searchResponse = openLibraryApiService.search(isbn)
+            searchResponse.docs?.firstOrNull()?.let { doc ->
+                Book(
+                    title = doc.title ?: "Unknown Title",
+                    author = doc.authorNames?.joinToString(", ") ?: "Unknown Author",
+                    isbn = isbn,
+                    coverUrl = doc.coverId?.let { OpenLibraryApiService.coverUrl(it, "L") },
+                    pageCount = doc.pageCount,
+                    publisher = doc.publishers?.firstOrNull(),
+                    publishedDate = doc.publishDates?.firstOrNull(),
+                    subjects = doc.subjects?.take(10)?.joinToString(", ")
+                )
+            }.also {
+                Log.d(TAG, "Open Library (search): ${it?.title ?: "not found"}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Open Library (search) error: ${e.message}")
+            null
         }
+    }
+
+    private suspend fun tryHardcover(isbn: String): Book? {
+        if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) {
+            Log.d(TAG, "Hardcover: skipped (no API token)")
+            return null
+        }
+        return try {
+            val response = hardcoverApiService.query(
+                HardcoverApiService.buildIsbnQuery(isbn)
+            )
+            response.data?.editions?.firstOrNull()?.let {
+                hardcoverEditionToBook(it, isbn)
+            }.also {
+                Log.d(TAG, "Hardcover: ${it?.title ?: "not found"}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Hardcover error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Converts an ISBN-13 (starting with 978) to ISBN-10.
+     * Some databases only index ISBN-10.
+     */
+    private fun convertIsbn13ToIsbn10(isbn13: String): String? {
+        if (isbn13.length != 13 || !isbn13.startsWith("978")) return null
+        val body = isbn13.substring(3, 12)
+        var sum = 0
+        for (i in body.indices) {
+            sum += (10 - i) * (body[i] - '0')
+        }
+        val check = (11 - (sum % 11)) % 11
+        val checkChar = if (check == 10) "X" else check.toString()
+        return body + checkChar
     }
 
     companion object {
@@ -175,7 +244,6 @@ class BookRepository @Inject constructor(
         edition: OpenLibraryEdition,
         scannedIsbn: String? = null
     ): Book {
-        // Resolve author names from author keys
         val authorNames = edition.authors?.mapNotNull { ref ->
             ref.key?.let { key ->
                 try {
@@ -187,7 +255,6 @@ class BookRepository @Inject constructor(
             }
         } ?: emptyList()
 
-        // Get work-level data (may have better description and subjects)
         val workData = edition.works?.firstOrNull()?.key?.let { workKey ->
             try {
                 openLibraryApiService.getWork(workKey.trimStart('/'))
@@ -196,20 +263,16 @@ class BookRepository @Inject constructor(
             }
         }
 
-        // Extract description (can be a String or an object with "value" key)
         val description = extractDescription(edition.description)
             ?: workData?.let { extractDescription(it.description) }
 
-        // Cover URL
         val coverUrl = edition.covers?.firstOrNull()?.let {
             OpenLibraryApiService.coverUrl(it, "L")
         }
 
-        // Subjects from edition or work
         val subjects = edition.subjects
             ?: workData?.subjects
 
-        // Language extraction
         val language = edition.languages?.firstOrNull()?.key
             ?.replace("/languages/", "")
             ?.uppercase()
@@ -260,10 +323,6 @@ class BookRepository @Inject constructor(
         }
     }
 
-    /**
-     * Merges two Book objects, preferring non-null values from primary,
-     * falling back to secondary for missing fields.
-     */
     private fun mergeBooks(primary: Book, secondary: Book): Book {
         return primary.copy(
             description = primary.description ?: secondary.description,
