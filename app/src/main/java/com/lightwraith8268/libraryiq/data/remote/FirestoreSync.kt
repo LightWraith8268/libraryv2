@@ -9,6 +9,7 @@ import com.lightwraith8268.libraryiq.data.local.entity.BookCollectionCrossRef
 import com.lightwraith8268.libraryiq.data.local.entity.Collection
 import com.lightwraith8268.libraryiq.data.local.entity.ReadingStatus
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
@@ -27,7 +28,7 @@ import javax.inject.Singleton
 /**
  * Handles Firebase Auth and Firestore sync using a shared library code.
  *
- * Each user signs in with their own account (email/password).
+ * Each user signs in with their Google account.
  * One user creates a shared library (generates a 6-char code).
  * The other user joins with that code.
  * Both devices sync data under: libraries/{libraryCode}/
@@ -92,18 +93,10 @@ class FirestoreSync @Inject constructor(
 
     // --- Auth ---
 
-    suspend fun signUp(email: String, password: String): Result<Unit> {
+    suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         return try {
-            auth.createUserWithEmailAndPassword(email, password).await()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun signIn(email: String, password: String): Result<Unit> {
-        return try {
-            auth.signInWithEmailAndPassword(email, password).await()
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            auth.signInWithCredential(credential).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

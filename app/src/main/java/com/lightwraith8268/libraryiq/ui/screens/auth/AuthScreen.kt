@@ -1,6 +1,8 @@
 package com.lightwraith8268.libraryiq.ui.screens.auth
 
 import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,14 +42,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +60,17 @@ fun AuthScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            val account = task.getResult(ApiException::class.java)
+            account.idToken?.let { viewModel.handleGoogleSignInResult(it) }
+        } catch (_: ApiException) {
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -116,40 +127,24 @@ fun AuthScreen(
             }
 
             if (!uiState.isSignedIn) {
-                // Sign in / Sign up form
+                // Google Sign In
                 Text(
-                    text = "Sign in to enable sync between devices",
+                    text = "Sign in with your Google account to enable sync between devices.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Text(
-                    text = "Each person can use their own account. Subscribe to create a library, or join an existing one for free.",
+                    text = "Subscribe to create a library, or join an existing one for free.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                OutlinedTextField(
-                    value = uiState.email,
-                    onValueChange = viewModel::onEmailChange,
-                    label = { Text("Email") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
-                )
-
-                OutlinedTextField(
-                    value = uiState.password,
-                    onValueChange = viewModel::onPasswordChange,
-                    label = { Text("Password") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
-                )
-
                 Button(
                     onClick = {
-                        if (uiState.isSignUpMode) viewModel.signUp() else viewModel.signIn()
+                        (context as? Activity)?.let { activity ->
+                            googleSignInLauncher.launch(viewModel.getGoogleSignInIntent(activity))
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !uiState.isLoading
@@ -160,21 +155,11 @@ fun AuthScreen(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text(if (uiState.isSignUpMode) "Create Account" else "Sign In")
+                        Text("Sign in with Google")
                     }
                 }
-
-                TextButton(
-                    onClick = viewModel::toggleSignUpMode,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        if (uiState.isSignUpMode) "Already have an account? Sign in"
-                        else "Don't have an account? Create one"
-                    )
-                }
             } else {
-                // Signed in - show account info and library management
+                // Signed in
                 Text(
                     text = "Signed in as: ${uiState.userEmail}",
                     style = MaterialTheme.typography.bodyMedium
@@ -265,7 +250,7 @@ fun AuthScreen(
                     }
 
                     Text(
-                        text = "Share this code with the other device to sync your library. On the other device, sign in and enter this code to join.",
+                        text = "Share this code with the other device to sync your library.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -277,7 +262,7 @@ fun AuthScreen(
                         Text("Leave Library")
                     }
                 } else {
-                    // No library yet - create (requires subscription) or join (free)
+                    // No library yet
                     HorizontalDivider()
 
                     Text(
@@ -350,7 +335,9 @@ fun AuthScreen(
                 HorizontalDivider()
 
                 OutlinedButton(
-                    onClick = viewModel::signOut,
+                    onClick = {
+                        (context as? Activity)?.let { viewModel.signOut(it) }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Sign Out")

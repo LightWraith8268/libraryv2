@@ -1,6 +1,8 @@
 package com.lightwraith8268.libraryiq.ui.screens.settings
 
 import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
@@ -47,14 +48,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +66,17 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            val account = task.getResult(ApiException::class.java)
+            account.idToken?.let { viewModel.handleGoogleSignInResult(it) }
+        } catch (_: ApiException) {
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -213,34 +225,18 @@ fun SettingsScreen(
             }
 
             if (!uiState.isSignedIn) {
-                // --- Sign In / Sign Up ---
+                // --- Google Sign In ---
                 Text(
-                    text = "Each person uses their own account. Subscribe to create a library, or join an existing one for free.",
+                    text = "Sign in with your Google account. Subscribe to create a library, or join an existing one for free.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                OutlinedTextField(
-                    value = uiState.email,
-                    onValueChange = viewModel::onEmailChange,
-                    label = { Text("Email") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
-                )
-
-                OutlinedTextField(
-                    value = uiState.password,
-                    onValueChange = viewModel::onPasswordChange,
-                    label = { Text("Password") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
-                )
-
                 Button(
                     onClick = {
-                        if (uiState.isSignUpMode) viewModel.signUp() else viewModel.signIn()
+                        (context as? Activity)?.let { activity ->
+                            googleSignInLauncher.launch(viewModel.getGoogleSignInIntent(activity))
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !uiState.isLoading
@@ -251,18 +247,8 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text(if (uiState.isSignUpMode) "Create Account" else "Sign In")
+                        Text("Sign in with Google")
                     }
-                }
-
-                TextButton(
-                    onClick = viewModel::toggleSignUpMode,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        if (uiState.isSignUpMode) "Already have an account? Sign in"
-                        else "Don't have an account? Create one"
-                    )
                 }
             } else {
                 // --- Signed In ---
@@ -394,7 +380,9 @@ fun SettingsScreen(
                 HorizontalDivider()
 
                 OutlinedButton(
-                    onClick = viewModel::signOut,
+                    onClick = {
+                        (context as? Activity)?.let { viewModel.signOut(it) }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Sign Out")
