@@ -203,16 +203,14 @@ class SettingsViewModel @Inject constructor(
 
     fun clearAllData() {
         viewModelScope.launch {
-            firestoreSync.stopListening()
+            firestoreSync.leaveLibrary()
             database.clearAllTables()
-            if (firestoreSync.isSyncEnabled) {
-                firestoreSync.startListening()
-            }
+            refreshState()
             _uiState.update {
                 it.copy(
                     showClearDataDialog = false,
                     dataCleared = true,
-                    message = "All local data cleared"
+                    message = "All local data cleared and disconnected from library"
                 )
             }
         }
