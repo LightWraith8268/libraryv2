@@ -1,5 +1,6 @@
 package com.lightwraith8268.libraryiq.data.repository
 
+import com.lightwraith8268.libraryiq.BuildConfig
 import com.lightwraith8268.libraryiq.data.local.dao.BookDao
 import com.lightwraith8268.libraryiq.data.local.entity.Book
 import com.lightwraith8268.libraryiq.data.local.entity.BookWithCollections
@@ -7,6 +8,8 @@ import com.lightwraith8268.libraryiq.data.local.entity.ReadingStatus
 import com.lightwraith8268.libraryiq.data.remote.BookApiService
 import com.lightwraith8268.libraryiq.data.remote.FirestoreSync
 import com.lightwraith8268.libraryiq.data.remote.GoogleBookItem
+import com.lightwraith8268.libraryiq.data.remote.HardcoverApiService
+import com.lightwraith8268.libraryiq.data.remote.HardcoverEdition
 import com.lightwraith8268.libraryiq.data.remote.OpenLibraryApiService
 import com.lightwraith8268.libraryiq.data.remote.OpenLibraryEdition
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +21,7 @@ class BookRepository @Inject constructor(
     private val bookDao: BookDao,
     private val bookApiService: BookApiService,
     private val openLibraryApiService: OpenLibraryApiService,
+    private val hardcoverApiService: HardcoverApiService,
     private val firestoreSync: FirestoreSync
 ) {
     fun getAllBooks(): Flow<List<Book>> = bookDao.getAllBooks()
@@ -55,6 +59,7 @@ class BookRepository @Inject constructor(
      * 1. Local database
      * 2. Google Books API
      * 3. Open Library API
+     * 4. Hardcover API (if API token is configured)
      * Merges results to get the most complete metadata.
      */
     suspend fun lookupByIsbn(isbn: String): Book? {
@@ -62,7 +67,7 @@ class BookRepository @Inject constructor(
         val existingBook = bookDao.getBookByIsbn(isbn)
         if (existingBook != null) return existingBook
 
-        // Try Google Books first (usually faster)
+        // Try Google Books first (usually fastest)
         val googleBook = try {
             val response = bookApiService.searchByIsbn(BookApiService.buildIsbnQuery(isbn))
             response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }
@@ -78,12 +83,28 @@ class BookRepository @Inject constructor(
             null
         }
 
-        // Merge results: prefer Google Books as primary, fill gaps from Open Library
+        // Try Hardcover as third source (if API token is configured)
+        val hardcoverBook = if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
+            try {
+                val response = hardcoverApiService.query(
+                    HardcoverApiService.buildIsbnQuery(isbn)
+                )
+                response.data?.editions?.firstOrNull()?.let {
+                    hardcoverEditionToBook(it, isbn)
+                }
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
+        // Merge all available results, preferring earlier sources
+        val sources = listOfNotNull(googleBook, openLibraryBook, hardcoverBook)
         return when {
-            googleBook != null && openLibraryBook != null -> mergeBooks(googleBook, openLibraryBook)
-            googleBook != null -> googleBook
-            openLibraryBook != null -> openLibraryBook
-            else -> null
+            sources.isEmpty() -> null
+            sources.size == 1 -> sources.first()
+            else -> sources.drop(1).fold(sources.first()) { acc, book -> mergeBooks(acc, book) }
         }
     }
 
@@ -165,6 +186,27 @@ class BookRepository @Inject constructor(
             language = language,
             format = edition.physicalFormat,
             subjects = subjects?.take(10)?.joinToString(", ")
+        )
+    }
+
+    private fun hardcoverEditionToBook(
+        edition: HardcoverEdition,
+        scannedIsbn: String? = null
+    ): Book {
+        val authorNames = edition.book?.contributions
+            ?.mapNotNull { it.author?.name }
+            ?: emptyList()
+
+        return Book(
+            title = edition.book?.title ?: edition.title ?: "Unknown Title",
+            author = authorNames.joinToString(", ").ifBlank { "Unknown Author" },
+            isbn = scannedIsbn ?: edition.isbn13,
+            isbn10 = edition.isbn10,
+            description = edition.book?.description,
+            coverUrl = edition.image?.url,
+            pageCount = edition.pages,
+            publisher = edition.publisher?.name,
+            publishedDate = edition.releaseDate
         )
     }
 
