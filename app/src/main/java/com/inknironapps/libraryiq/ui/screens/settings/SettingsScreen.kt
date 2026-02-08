@@ -60,7 +60,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
-import com.inknironapps.libraryiq.BuildConfig
 import com.inknironapps.libraryiq.util.DebugLog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -432,8 +431,8 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // --- Debug Log (admin only, debug builds) ---
-            if (uiState.isAdmin && BuildConfig.DEBUG) {
+            // --- Debug Log (admin only) ---
+            if (uiState.isAdmin) {
                 HorizontalDivider()
 
                 val logEntries by DebugLog.entries.collectAsStateWithLifecycle()
