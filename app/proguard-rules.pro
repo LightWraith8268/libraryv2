@@ -1,8 +1,8 @@
 # Keep Room entities
--keep class com.lightwraith8268.libraryiq.data.local.entity.** { *; }
+-keep class com.inknironapps.libraryiq.data.local.entity.** { *; }
 
 # Keep Gson serialization models (Google Books, Open Library, Hardcover)
--keep class com.lightwraith8268.libraryiq.data.remote.** { *; }
+-keep class com.inknironapps.libraryiq.data.remote.** { *; }
 
 # Keep Hilt generated classes
 -keep class dagger.hilt.** { *; }
