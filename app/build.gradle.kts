@@ -121,6 +121,9 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
 
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
+
     // Google Play Billing
     implementation("com.android.billingclient:billing-ktx:6.1.0")
 
