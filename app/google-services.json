@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:457735529333:android:a16f10ebae537be17ba93c",
         "android_client_info": {
-          "package_name": "com.inknironsapps.libraryiq"
+          "package_name": "com.inknironapps.libraryiq"
         }
       },
       "oauth_client": [
@@ -17,7 +17,7 @@
           "client_id": "457735529333-7h84g2scf933qc7h9sn6rt16lcvjvi51.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.inknironsapps.libraryiq",
+            "package_name": "com.inknironapps.libraryiq",
             "certificate_hash": "999f78c7ab05b86739e8b7a90d26e748131f8aad"
           }
         },
