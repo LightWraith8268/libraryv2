@@ -101,7 +101,14 @@ fun AppNavigation() {
                 SettingsScreen(navController = navController)
             }
 
-            composable(Screen.AddBook.route) {
+            composable(
+                route = Screen.AddBook.route,
+                arguments = listOf(navArgument("isbn") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                })
+            ) {
                 AddBookScreen(navController = navController)
             }
 
