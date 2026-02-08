@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.lightwraith8268.libraryiq"
+    namespace = "com.inknironapps.libraryiq"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.lightwraith8268.libraryiq"
+        applicationId = "com.inknironapps.libraryiq"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

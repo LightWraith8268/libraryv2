@@ -7,17 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:457735529333:android:bc20febb42e6d7e47ba93c",
+        "mobilesdk_app_id": "1:457735529333:android:79bffa44670c6db37ba93c",
         "android_client_info": {
-          "package_name": "com.lightwraith8268.libraryiq"
+          "package_name": "com.inknironapps.libraryiq"
         }
       },
       "oauth_client": [
         {
-          "client_id": "457735529333-7862qlsdn80n5ms228j2dqm3nasb2fn2.apps.googleusercontent.com",
+          "client_id": "457735529333-livb5eu5ertf4ui7p1ookbg3chhnl9ct.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.lightwraith8268.libraryiq",
+            "package_name": "com.inknironapps.libraryiq",
             "certificate_hash": "999f78c7ab05b86739e8b7a90d26e748131f8aad"
           }
         },
