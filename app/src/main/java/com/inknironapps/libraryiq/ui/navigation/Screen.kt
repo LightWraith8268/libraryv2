@@ -4,7 +4,10 @@ sealed class Screen(val route: String) {
     data object Library : Screen("library")
     data object Collections : Screen("collections")
     data object Settings : Screen("settings")
-    data object AddBook : Screen("add_book")
+    data object AddBook : Screen("add_book?isbn={isbn}") {
+        fun createRoute(isbn: String? = null) =
+            if (isbn != null) "add_book?isbn=$isbn" else "add_book"
+    }
     data object Scanner : Screen("scanner")
     data object Auth : Screen("auth")
 

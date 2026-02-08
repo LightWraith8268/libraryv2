@@ -88,6 +88,7 @@ class SettingsViewModel @Inject constructor(
     fun onJoinCodeChange(value: String) = _uiState.update { it.copy(joinCode = value) }
     fun clearError() = _uiState.update { it.copy(error = null) }
     fun clearMessage() = _uiState.update { it.copy(message = null) }
+    fun showSignInError(message: String) = _uiState.update { it.copy(error = message, isLoading = false) }
 
     fun getGoogleSignInIntent(activity: Activity) = GoogleSignIn.getClient(
         activity,
@@ -104,6 +105,13 @@ class SettingsViewModel @Inject constructor(
             result.fold(
                 onSuccess = {
                     billingManager.refreshAdminStatus()
+
+                    // Restore library code from Firestore if not stored locally
+                    val restoredCode = firestoreSync.restoreLibraryCode()
+                    if (restoredCode != null) {
+                        firestoreSync.startListening()
+                    }
+
                     refreshState()
                     _uiState.update { it.copy(isLoading = false) }
                     if (firestoreSync.isSyncEnabled) {

@@ -55,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.inknironapps.libraryiq.ui.navigation.Screen
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
@@ -174,8 +175,17 @@ fun ScannerScreen(
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = viewModel::scanAgain) {
-                        Text("Try Again")
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = viewModel::scanAgain) {
+                            Text("Scan Again")
+                        }
+                        Button(onClick = {
+                            navController.navigate(
+                                Screen.AddBook.createRoute(uiState.scannedIsbn)
+                            )
+                        }) {
+                            Text("Add Manually")
+                        }
                     }
                 }
             }

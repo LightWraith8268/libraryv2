@@ -71,7 +71,8 @@ class AddBookViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLookingUp = true, error = null) }
             try {
-                val book = bookRepository.lookupByIsbn(isbn)
+                val result = bookRepository.lookupByIsbn(isbn)
+                val book = result.book
                 if (book != null) {
                     _uiState.update {
                         it.copy(
@@ -90,7 +91,10 @@ class AddBookViewModel @Inject constructor(
                     }
                 } else {
                     _uiState.update {
-                        it.copy(isLookingUp = false, error = "No book found for this ISBN")
+                        it.copy(
+                            isLookingUp = false,
+                            error = "No book found for this ISBN\n${result.diagnostics}"
+                        )
                     }
                 }
             } catch (e: Exception) {

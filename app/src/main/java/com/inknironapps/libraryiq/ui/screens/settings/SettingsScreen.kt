@@ -3,6 +3,7 @@ package com.inknironapps.libraryiq.ui.screens.settings
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,14 +11,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
@@ -56,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import com.inknironapps.libraryiq.util.DebugLog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +79,10 @@ fun SettingsScreen(
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             val account = task.getResult(ApiException::class.java)
             account.idToken?.let { viewModel.handleGoogleSignInResult(it) }
-        } catch (_: ApiException) {
+                ?: viewModel.showSignInError("No ID token received from Google")
+        } catch (e: ApiException) {
+            DebugLog.e("GoogleSignIn", "Sign-in failed: status=${e.statusCode}, message=${e.message}")
+            viewModel.showSignInError("Google Sign-In failed (code ${e.statusCode}): ${e.message}")
         }
     }
 
@@ -423,6 +431,98 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // --- Debug Log (admin only) ---
+            if (uiState.isAdmin) {
+                HorizontalDivider()
+
+                val logEntries by DebugLog.entries.collectAsStateWithLifecycle()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.BugReport,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Debug Log",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+                    Row {
+                        IconButton(onClick = {
+                            clipboardManager.setText(
+                                AnnotatedString(
+                                    logEntries.joinToString("\n") { it.formatted() }
+                                )
+                            )
+                        }) {
+                            Icon(
+                                Icons.Default.ContentCopy,
+                                contentDescription = "Copy logs"
+                            )
+                        }
+                        IconButton(onClick = { DebugLog.clear() }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Clear logs"
+                            )
+                        }
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    val logScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp)
+                            .verticalScroll(logScrollState)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(8.dp)
+                    ) {
+                        if (logEntries.isEmpty()) {
+                            Text(
+                                text = "No log entries yet. Scan a book to see diagnostics.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            logEntries.forEach { entry ->
+                                Text(
+                                    text = entry.formatted(),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp
+                                    ),
+                                    color = when (entry.level) {
+                                        "E" -> MaterialTheme.colorScheme.error
+                                        "W" -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "${logEntries.size} entries",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             HorizontalDivider()
 
             // --- About ---
@@ -457,7 +557,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Metadata sources: Google Books API, Open Library API",
+                        text = "Metadata sources: Google Books, Open Library, Hardcover, Amazon",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
