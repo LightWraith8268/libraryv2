@@ -80,7 +80,10 @@ fun SettingsScreen(
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             val account = task.getResult(ApiException::class.java)
             account.idToken?.let { viewModel.handleGoogleSignInResult(it) }
-        } catch (_: ApiException) {
+                ?: viewModel.showSignInError("No ID token received from Google")
+        } catch (e: ApiException) {
+            DebugLog.e("GoogleSignIn", "Sign-in failed: status=${e.statusCode}, message=${e.message}")
+            viewModel.showSignInError("Google Sign-In failed (code ${e.statusCode}): ${e.message}")
         }
     }
 
