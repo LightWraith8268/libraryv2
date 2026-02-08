@@ -22,7 +22,12 @@ android {
             useSupportLibrary = true
         }
 
-        val hardcoverToken = project.findProperty("HARDCOVER_API_TOKEN") as? String
+        val localProps = java.util.Properties()
+        val localPropsFile = rootProject.file("local.properties")
+        if (localPropsFile.exists()) {
+            localProps.load(localPropsFile.inputStream())
+        }
+        val hardcoverToken = localProps.getProperty("HARDCOVER_API_TOKEN")
             ?: System.getenv("HARDCOVER_API_TOKEN")
             ?: ""
         buildConfigField("String", "HARDCOVER_API_TOKEN", "\"$hardcoverToken\"")

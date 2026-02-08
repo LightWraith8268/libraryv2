@@ -60,7 +60,8 @@ class BookRepository @Inject constructor(
      * 1. Local database
      * 2. Google Books API
      * 3. Open Library API
-     * 4. Hardcover API (if API token is configured)
+     * 4. Open Library Search API (fallback if direct lookup fails)
+     * 5. Hardcover API (if API token is configured)
      * Merges results to get the most complete metadata.
      */
     suspend fun lookupByIsbn(isbn: String): Book? {
@@ -84,15 +85,35 @@ class BookRepository @Inject constructor(
             null
         }
 
-        // Try Open Library for additional/fallback metadata
+        // Try Open Library direct ISBN lookup
         val openLibraryBook = try {
             val edition = openLibraryApiService.getByIsbn(isbn)
             openLibraryEditionToBook(edition, isbn).also {
-                Log.d(TAG, "Open Library: ${it.title}")
+                Log.d(TAG, "Open Library (direct): ${it.title}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Open Library error: ${e.message}")
-            null
+            Log.e(TAG, "Open Library (direct) error: ${e.message}")
+            // Fallback: try Open Library search endpoint
+            try {
+                val searchResponse = openLibraryApiService.search(isbn)
+                searchResponse.docs?.firstOrNull()?.let { doc ->
+                    Book(
+                        title = doc.title ?: "Unknown Title",
+                        author = doc.authorNames?.joinToString(", ") ?: "Unknown Author",
+                        isbn = isbn,
+                        coverUrl = doc.coverId?.let { OpenLibraryApiService.coverUrl(it, "L") },
+                        pageCount = doc.pageCount,
+                        publisher = doc.publishers?.firstOrNull(),
+                        publishedDate = doc.publishDates?.firstOrNull(),
+                        subjects = doc.subjects?.take(10)?.joinToString(", ")
+                    )
+                }.also {
+                    Log.d(TAG, "Open Library (search): ${it?.title ?: "not found"}")
+                }
+            } catch (e2: Exception) {
+                Log.e(TAG, "Open Library (search) error: ${e2.message}")
+                null
+            }
         }
 
         // Try Hardcover as third source (if API token is configured)
