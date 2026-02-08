@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "457735529333-669le9bthpvad96tvjr17ifem7jd4pup.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.inknironapps.libraryiq",
+            "certificate_hash": "3b0922ad81cf0bd771933c73a61f2724e5c82edf"
+          }
+        },
+        {
           "client_id": "457735529333-livb5eu5ertf4ui7p1ookbg3chhnl9ct.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
