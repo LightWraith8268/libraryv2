@@ -25,7 +25,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SearchBar
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -74,12 +74,9 @@ fun LibraryScreen(
             )
 
             // Search bar
-            SearchBar(
-                query = searchQuery,
-                onQueryChange = viewModel::onSearchQueryChange,
-                onSearch = { },
-                active = false,
-                onActiveChange = { },
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = viewModel::onSearchQueryChange,
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
@@ -89,10 +86,11 @@ fun LibraryScreen(
                     }
                 },
                 placeholder = { Text("Search books...") },
+                singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-            ) { }
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
