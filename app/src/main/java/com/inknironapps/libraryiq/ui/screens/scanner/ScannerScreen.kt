@@ -292,14 +292,12 @@ fun CameraPreviewWithScanner(
                                 barcodeScanner.process(inputImage)
                                     .addOnSuccessListener { barcodes ->
                                         for (barcode in barcodes) {
-                                            if (barcode.format == Barcode.FORMAT_EAN_13 ||
-                                                barcode.format == Barcode.FORMAT_EAN_8 ||
-                                                barcode.format == Barcode.FORMAT_UPC_A ||
-                                                barcode.format == Barcode.FORMAT_UPC_E
+                                            val value = barcode.rawValue ?: continue
+                                            // Only accept ISBN barcodes: EAN-13 starting with 978/979
+                                            if (barcode.format == Barcode.FORMAT_EAN_13 &&
+                                                (value.startsWith("978") || value.startsWith("979"))
                                             ) {
-                                                barcode.rawValue?.let { isbn ->
-                                                    onBarcodeDetected(isbn)
-                                                }
+                                                onBarcodeDetected(value)
                                             }
                                         }
                                     }
