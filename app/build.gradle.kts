@@ -21,6 +21,11 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        val hardcoverToken = project.findProperty("HARDCOVER_API_TOKEN") as? String
+            ?: System.getenv("HARDCOVER_API_TOKEN")
+            ?: ""
+        buildConfigField("String", "HARDCOVER_API_TOKEN", "\"$hardcoverToken\"")
     }
 
     signingConfigs {
@@ -58,6 +63,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
