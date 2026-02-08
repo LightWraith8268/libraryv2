@@ -18,6 +18,7 @@ data class ScannerUiState(
     val isLookingUp: Boolean = false,
     val isSaved: Boolean = false,
     val error: String? = null,
+    val diagnostics: String? = null,
     val isScanning: Boolean = true
 )
 
@@ -48,14 +49,21 @@ class ScannerViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val book = bookRepository.lookupByIsbn(rawValue)
-                if (book != null) {
-                    _uiState.update { it.copy(lookupResult = book, isLookingUp = false) }
+                val result = bookRepository.lookupByIsbn(rawValue)
+                if (result.book != null) {
+                    _uiState.update {
+                        it.copy(
+                            lookupResult = result.book,
+                            isLookingUp = false,
+                            diagnostics = result.diagnostics
+                        )
+                    }
                 } else {
                     _uiState.update {
                         it.copy(
                             isLookingUp = false,
-                            error = "No book found for ISBN: $rawValue"
+                            error = "No book found for ISBN: $rawValue",
+                            diagnostics = result.diagnostics
                         )
                     }
                 }

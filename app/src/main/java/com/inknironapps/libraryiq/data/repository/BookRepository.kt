@@ -1,11 +1,11 @@
 package com.inknironapps.libraryiq.data.repository
 
-import android.util.Log
 import com.inknironapps.libraryiq.BuildConfig
 import com.inknironapps.libraryiq.data.local.dao.BookDao
 import com.inknironapps.libraryiq.data.local.entity.Book
 import com.inknironapps.libraryiq.data.local.entity.BookWithCollections
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
+import com.inknironapps.libraryiq.data.remote.AmazonMetadataScraper
 import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
 import com.inknironapps.libraryiq.data.remote.GoogleBookItem
@@ -13,9 +13,15 @@ import com.inknironapps.libraryiq.data.remote.HardcoverApiService
 import com.inknironapps.libraryiq.data.remote.HardcoverEdition
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
+import com.inknironapps.libraryiq.util.DebugLog
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class LookupResult(
+    val book: Book?,
+    val diagnostics: String
+)
 
 @Singleton
 class BookRepository @Inject constructor(
@@ -23,6 +29,7 @@ class BookRepository @Inject constructor(
     private val bookApiService: BookApiService,
     private val openLibraryApiService: OpenLibraryApiService,
     private val hardcoverApiService: HardcoverApiService,
+    private val amazonScraper: AmazonMetadataScraper,
     private val firestoreSync: FirestoreSync
 ) {
     fun getAllBooks(): Flow<List<Book>> = bookDao.getAllBooks()
@@ -64,68 +71,91 @@ class BookRepository @Inject constructor(
      * 5. Open Library (direct ISBN endpoint)
      * 6. Open Library (search endpoint)
      * 7. Hardcover API (if token configured)
+     * 8. Amazon product page scraping (like Calibre)
      * Merges results for the most complete metadata.
      */
-    suspend fun lookupByIsbn(isbn: String): Book? {
-        Log.d(TAG, "lookupByIsbn: $isbn")
+    suspend fun lookupByIsbn(isbn: String): LookupResult {
+        DebugLog.d(TAG, "lookupByIsbn: $isbn")
+        val diag = mutableListOf<String>()
 
         // Check local database first
         val existingBook = bookDao.getBookByIsbn(isbn)
         if (existingBook != null) {
-            Log.d(TAG, "Found in local database: ${existingBook.title}")
-            return existingBook
+            DebugLog.d(TAG, "Found in local database: ${existingBook.title}")
+            return LookupResult(existingBook, "Found in local database")
         }
 
         val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) {
             convertIsbn13ToIsbn10(isbn)
         } else null
-        if (isbn10 != null) Log.d(TAG, "ISBN-10 variant: $isbn10")
+        if (isbn10 != null) DebugLog.d(TAG, "ISBN-10 variant: $isbn10")
 
         // 1. Google Books strict ISBN search
         val googleBook = tryGoogleBooksIsbn(isbn)
+        diag.add(if (googleBook != null) "GB(isbn): ${googleBook.title}" else "GB(isbn): miss")
 
-        // 2. Google Books general search (ISBN as plain text, catches non-indexed books)
+        // 2. Google Books general search (ISBN as plain text)
         val googleGeneralBook = if (googleBook == null) {
-            tryGoogleBooksGeneral(isbn)
+            tryGoogleBooksGeneral(isbn).also {
+                diag.add(if (it != null) "GB(general): ${it.title}" else "GB(general): miss")
+            }
         } else null
 
-        // 3. Google Books ISBN-10 variant (some databases only index ISBN-10)
+        // 3. Google Books ISBN-10 variant
         val googleIsbn10Book = if (googleBook == null && googleGeneralBook == null && isbn10 != null) {
-            tryGoogleBooksIsbn(isbn10)?.copy(isbn = isbn)
+            tryGoogleBooksIsbn(isbn10)?.copy(isbn = isbn).also {
+                diag.add(if (it != null) "GB(isbn10): ${it.title}" else "GB(isbn10): miss")
+            }
         } else null
 
         // 4. Open Library direct + search fallback
         val openLibraryBook = tryOpenLibrary(isbn)
+        diag.add(if (openLibraryBook != null) "OL: ${openLibraryBook.title}" else "OL: miss")
 
         // 5. Hardcover
         val hardcoverBook = tryHardcover(isbn)
+        diag.add(if (hardcoverBook != null) "HC: ${hardcoverBook.title}" else
+            if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) "HC: no token" else "HC: miss")
+
+        // 6. Amazon scraping (last resort, like Calibre)
+        val amazonBook = if (listOfNotNull(googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook).isEmpty()) {
+            tryAmazon(isbn).also {
+                diag.add(if (it != null) "AMZ: ${it.title}" else "AMZ: miss")
+            }
+        } else null
+
+        val diagStr = diag.joinToString(" | ")
+        DebugLog.d(TAG, "Diagnostics: $diagStr")
 
         // Collect all results and merge
         val sources = listOfNotNull(
-            googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook
+            googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook, amazonBook
         )
-        Log.d(TAG, "Total sources found: ${sources.size}")
 
         if (sources.isNotEmpty()) {
             val merged = sources.drop(1).fold(sources.first()) { acc, book ->
                 mergeBooks(acc, book)
             }
-            Log.d(TAG, "Final result: ${merged.title} by ${merged.author}")
-            return merged
+            DebugLog.d(TAG, "Final result: ${merged.title} by ${merged.author}")
+            return LookupResult(merged, diagStr)
         }
 
-        Log.d(TAG, "No sources found for ISBN: $isbn")
-        return null
+        DebugLog.d(TAG, "No sources found for ISBN: $isbn")
+        return LookupResult(null, diagStr)
     }
+
+    var lastErrors = mutableListOf<String>()
+        private set
 
     private suspend fun tryGoogleBooksIsbn(isbn: String): Book? {
         return try {
             val response = bookApiService.searchByIsbn("isbn:$isbn")
             response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
-                Log.d(TAG, "Google Books (isbn:$isbn): ${it?.title ?: "not found"}")
+                DebugLog.d(TAG, "Google Books (isbn:$isbn): ${it?.title ?: "not found"}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Google Books (isbn:) error: ${e.message}")
+            DebugLog.e(TAG, "Google Books (isbn:) error: ${e.message}")
+            lastErrors.add("GB(isbn): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -134,29 +164,29 @@ class BookRepository @Inject constructor(
         return try {
             val response = bookApiService.searchByIsbn(isbn)
             response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
-                Log.d(TAG, "Google Books (general): ${it?.title ?: "not found"}")
+                DebugLog.d(TAG, "Google Books (general): ${it?.title ?: "not found"}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Google Books (general) error: ${e.message}")
+            DebugLog.e(TAG, "Google Books (general) error: ${e.message}")
+            lastErrors.add("GB(gen): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
 
     private suspend fun tryOpenLibrary(isbn: String): Book? {
-        // Direct ISBN endpoint
         val direct = try {
             val edition = openLibraryApiService.getByIsbn(isbn)
             openLibraryEditionToBook(edition, isbn).also {
-                Log.d(TAG, "Open Library (direct): ${it.title}")
+                DebugLog.d(TAG, "Open Library (direct): ${it.title}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Open Library (direct) error: ${e.message}")
+            DebugLog.e(TAG, "Open Library (direct) error: ${e.message}")
+            lastErrors.add("OL(direct): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
 
         if (direct != null) return direct
 
-        // Search endpoint fallback
         return try {
             val searchResponse = openLibraryApiService.search(isbn)
             searchResponse.docs?.firstOrNull()?.let { doc ->
@@ -171,17 +201,18 @@ class BookRepository @Inject constructor(
                     subjects = doc.subjects?.take(10)?.joinToString(", ")
                 )
             }.also {
-                Log.d(TAG, "Open Library (search): ${it?.title ?: "not found"}")
+                DebugLog.d(TAG, "Open Library (search): ${it?.title ?: "not found"}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Open Library (search) error: ${e.message}")
+            DebugLog.e(TAG, "Open Library (search) error: ${e.message}")
+            lastErrors.add("OL(search): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
 
     private suspend fun tryHardcover(isbn: String): Book? {
         if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) {
-            Log.d(TAG, "Hardcover: skipped (no API token)")
+            DebugLog.d(TAG, "Hardcover: skipped (no API token)")
             return null
         }
         return try {
@@ -191,10 +222,29 @@ class BookRepository @Inject constructor(
             response.data?.editions?.firstOrNull()?.let {
                 hardcoverEditionToBook(it, isbn)
             }.also {
-                Log.d(TAG, "Hardcover: ${it?.title ?: "not found"}")
+                DebugLog.d(TAG, "Hardcover: ${it?.title ?: "not found"}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Hardcover error: ${e.message}")
+            DebugLog.e(TAG, "Hardcover error: ${e.message}")
+            lastErrors.add("HC: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryAmazon(isbn: String): Book? {
+        return try {
+            // Try product page first (ISBN-10 works as ASIN)
+            val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) {
+                convertIsbn13ToIsbn10(isbn)
+            } else isbn
+            val productBook = isbn10?.let { amazonScraper.lookupByProductPage(it) }
+            if (productBook != null) return productBook.copy(isbn = isbn)
+
+            // Fall back to search
+            amazonScraper.lookupByIsbn(isbn)
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Amazon scraper error: ${e.message}")
+            lastErrors.add("AMZ: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }

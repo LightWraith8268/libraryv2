@@ -188,6 +188,37 @@ class FirestoreSync @Inject constructor(
         libraryCode = null
     }
 
+    /**
+     * After sign-in, checks if the user is already a member of a library
+     * in Firestore and restores the library code if found.
+     * This handles the case where the user reinstalls the app or
+     * clears data but still has an active library.
+     */
+    suspend fun restoreLibraryCode(): String? {
+        if (!isSignedIn) return null
+        if (!libraryCode.isNullOrBlank()) return libraryCode // Already have one
+
+        val userId = getUserId() ?: return null
+        return try {
+            val querySnapshot = firestore.collection("libraries")
+                .whereArrayContains("members", userId)
+                .limit(1)
+                .get()
+                .await()
+
+            val doc = querySnapshot.documents.firstOrNull()
+            if (doc != null) {
+                val code = doc.id
+                libraryCode = code
+                code
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun generateLibraryCode(): String {
         val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // Avoids ambiguous chars (0/O, 1/I)
         return (1..6).map { chars.random() }.joinToString("")
