@@ -52,31 +52,36 @@ interface HardcoverApiService {
         }
 
         fun buildTitleQuery(title: String): GraphQLRequest {
+            // Query through editions table (which we have access to) with
+            // a book title filter, instead of querying books table directly
             val query = """
                 query BookByTitle(${'$'}title: String!) {
-                    books(where: {title: {_ilike: ${'$'}title}}, limit: 3) {
+                    editions(where: {book: {title: {_ilike: ${'$'}title}}}, limit: 3, order_by: {release_date: desc}) {
+                        isbn_13
+                        isbn_10
+                        pages
                         title
-                        description
-                        contributions(limit: 5) {
-                            author {
-                                name
+                        image {
+                            url
+                        }
+                        release_date
+                        book {
+                            title
+                            description
+                            contributions(limit: 5) {
+                                author {
+                                    name
+                                }
+                            }
+                            book_series {
+                                series {
+                                    name
+                                }
+                                position
                             }
                         }
-                        book_series {
-                            series {
-                                name
-                            }
-                            position
-                        }
-                        editions(limit: 1, order_by: {release_date: desc}) {
-                            pages
-                            image {
-                                url
-                            }
-                            publisher {
-                                name
-                            }
-                            release_date
+                        publisher {
+                            name
                         }
                     }
                 }

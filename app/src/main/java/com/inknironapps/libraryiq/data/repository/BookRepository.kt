@@ -10,7 +10,6 @@ import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
 import com.inknironapps.libraryiq.data.remote.GoogleBookItem
 import com.inknironapps.libraryiq.data.remote.HardcoverApiService
-import com.inknironapps.libraryiq.data.remote.HardcoverBookResult
 import com.inknironapps.libraryiq.data.remote.HardcoverEdition
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
@@ -254,14 +253,15 @@ class BookRepository @Inject constructor(
         }
 
         // Hardcover title search (best source for series data)
+        // Uses editions table with book title filter (same table as ISBN search)
         if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
             try {
                 val response = hardcoverApiService.query(
                     HardcoverApiService.buildTitleQuery(baseTitle)
                 )
-                val bestMatch = response.data?.books?.firstOrNull()
+                val bestMatch = response.data?.editions?.firstOrNull()
                 if (bestMatch != null) {
-                    val book = hardcoverBookResultToBook(bestMatch, isbn)
+                    val book = hardcoverEditionToBook(bestMatch, isbn)
                     DebugLog.d(TAG, "HC(title): '${book.title}' by ${book.author}, " +
                         "series=${book.series} #${book.seriesNumber}")
                     results.add(book)
@@ -499,36 +499,6 @@ class BookRepository @Inject constructor(
             pageCount = edition.pages,
             publisher = edition.publisher?.name,
             publishedDate = edition.releaseDate,
-            series = seriesName,
-            seriesNumber = seriesNumber
-        )
-    }
-
-    private fun hardcoverBookResultToBook(
-        bookResult: HardcoverBookResult,
-        isbn: String
-    ): Book {
-        val authorNames = bookResult.contributions
-            ?.mapNotNull { it.author?.name }
-            ?: emptyList()
-
-        val seriesInfo = bookResult.bookSeries?.firstOrNull()
-        val seriesName = seriesInfo?.series?.name
-        val seriesNumber = seriesInfo?.position?.let {
-            if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
-        }
-
-        val edition = bookResult.editions?.firstOrNull()
-
-        return Book(
-            title = bookResult.title ?: "Unknown Title",
-            author = authorNames.joinToString(", ").ifBlank { "Unknown Author" },
-            isbn = isbn,
-            description = bookResult.description,
-            coverUrl = edition?.image?.url,
-            pageCount = edition?.pages,
-            publisher = edition?.publisher?.name,
-            publishedDate = edition?.releaseDate,
             series = seriesName,
             seriesNumber = seriesNumber
         )
