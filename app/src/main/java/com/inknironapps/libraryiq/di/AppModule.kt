@@ -3,6 +3,7 @@ package com.inknironapps.libraryiq.di
 import android.content.Context
 import androidx.room.Room
 import com.inknironapps.libraryiq.data.local.AppDatabase
+import com.inknironapps.libraryiq.data.local.MIGRATION_1_2
 import com.inknironapps.libraryiq.data.local.dao.BookDao
 import com.inknironapps.libraryiq.data.local.dao.CollectionDao
 import dagger.Module
@@ -23,7 +24,7 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "libraryiq_database"
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
     }
 
     @Provides

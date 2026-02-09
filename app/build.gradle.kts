@@ -16,9 +16,9 @@ plugins {
 // versionBuild is a separate monotonic counter for Play Store -
 // increment it with every release regardless of version numbers.
 val versionMajor = 1
-val versionMinor = 4
-val versionPatch = 1
-val versionBuild = 12  // Bump this with every release
+val versionMinor = 5
+val versionPatch = 0
+val versionBuild = 13  // Bump this with every release
 
 android {
     namespace = "com.inknironapps.libraryiq"

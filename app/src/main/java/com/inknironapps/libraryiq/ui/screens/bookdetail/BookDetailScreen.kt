@@ -1,5 +1,6 @@
 package com.inknironapps.libraryiq.ui.screens.bookdetail
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -21,6 +23,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.StarHalf
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -32,6 +37,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,6 +62,9 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -66,6 +76,7 @@ fun BookDetailScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCollectionMenu by remember { mutableStateOf(false) }
+    var showPageDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(bookId) {
         viewModel.loadBook(bookId)
@@ -186,9 +197,19 @@ fun BookDetailScreen(
                     }
                 }
 
+                // --- Star Rating ---
                 HorizontalDivider()
+                Text(
+                    text = "Rating",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                StarRatingBar(
+                    rating = book.rating ?: 0f,
+                    onRatingChanged = { viewModel.updateRating(if (it == 0f) null else it) }
+                )
 
                 // --- Reading Status ---
+                HorizontalDivider()
                 Text(
                     text = "Reading Status",
                     style = MaterialTheme.typography.titleMedium
@@ -203,6 +224,63 @@ fun BookDetailScreen(
                             selected = book.readingStatus == status,
                             onClick = { viewModel.updateReadingStatus(status) }
                         )
+                    }
+                }
+
+                // --- Reading Progress ---
+                if (book.readingStatus == ReadingStatus.READING && book.pageCount != null && book.pageCount > 0) {
+                    val currentPage = book.currentPage ?: 0
+                    val progress = (currentPage.toFloat() / book.pageCount).coerceIn(0f, 1f)
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Page $currentPage of ${book.pageCount}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            TextButton(onClick = { showPageDialog = true }) {
+                                Text("Update")
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "${(progress * 100).toInt()}% complete",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (book.readingStatus == ReadingStatus.READING) {
+                    TextButton(onClick = { showPageDialog = true }) {
+                        Text("Set Current Page")
+                    }
+                }
+
+                // --- Reading Dates ---
+                val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+                if (book.dateStarted != null || book.dateFinished != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            book.dateStarted?.let {
+                                MetadataRow("Started", dateFormat.format(Date(it)))
+                            }
+                            book.dateFinished?.let {
+                                MetadataRow("Finished", dateFormat.format(Date(it)))
+                            }
+                        }
                     }
                 }
 
@@ -250,6 +328,7 @@ fun BookDetailScreen(
                         book.publisher?.let { MetadataRow("Publisher", it) }
                         book.publishedDate?.let { MetadataRow("Published", it) }
                         book.pageCount?.let { MetadataRow("Pages", it.toString()) }
+                        book.edition?.let { MetadataRow("Edition", it) }
 
                         if (!book.isbn.isNullOrBlank()) {
                             MetadataRow("ISBN-13", book.isbn)
@@ -266,12 +345,19 @@ fun BookDetailScreen(
                             MetadataRow("Subjects", book.subjects)
                         }
 
+                        // Extended identifiers
+                        book.asin?.let { MetadataRow("ASIN", it) }
+                        book.goodreadsId?.let { MetadataRow("Goodreads", it) }
+                        book.openLibraryId?.let { MetadataRow("OpenLibrary", it) }
+                        book.hardcoverId?.let { MetadataRow("Hardcover", it) }
+
+                        // Original title/language
+                        book.originalTitle?.let { MetadataRow("Orig. Title", it) }
+                        book.originalLanguage?.let { MetadataRow("Orig. Lang.", it) }
+
                         MetadataRow(
                             "Added",
-                            java.text.SimpleDateFormat(
-                                "MMM d, yyyy",
-                                java.util.Locale.getDefault()
-                            ).format(java.util.Date(book.dateAdded))
+                            dateFormat.format(Date(book.dateAdded))
                         )
                     }
                 }
@@ -301,6 +387,43 @@ fun BookDetailScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+
+                // --- Tags ---
+                HorizontalDivider()
+                Text(
+                    text = "Tags",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (uiState.isEditing) {
+                    OutlinedTextField(
+                        value = uiState.editTags,
+                        onValueChange = viewModel::onEditTagsChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("fiction, sci-fi, favorites...") },
+                        singleLine = true
+                    )
+                } else {
+                    if (!book.tags.isNullOrBlank()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            book.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                .forEach { tag ->
+                                    AssistChip(
+                                        onClick = { },
+                                        label = { Text(tag) }
+                                    )
+                                }
+                        }
+                    } else {
+                        Text(
+                            text = "No tags. Tap edit to add some.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
                 // --- Notes ---
@@ -425,6 +548,76 @@ fun BookDetailScreen(
                 }
             }
         )
+    }
+
+    // Current page dialog
+    if (showPageDialog) {
+        var pageText by remember { mutableStateOf(book?.currentPage?.toString() ?: "") }
+        AlertDialog(
+            onDismissRequest = { showPageDialog = false },
+            title = { Text("Update Current Page") },
+            text = {
+                OutlinedTextField(
+                    value = pageText,
+                    onValueChange = { pageText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Page number") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val page = pageText.toIntOrNull()
+                    viewModel.updateCurrentPage(page)
+                    showPageDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPageDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun StarRatingBar(
+    rating: Float,
+    onRatingChanged: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        for (i in 1..5) {
+            val icon = when {
+                rating >= i -> Icons.Default.Star
+                rating >= i - 0.5f -> Icons.Default.StarHalf
+                else -> Icons.Default.StarBorder
+            }
+            Icon(
+                imageVector = icon,
+                contentDescription = "$i star",
+                tint = if (rating >= i - 0.5f) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .size(36.dp)
+                    .clickable { onRatingChanged(if (rating == i.toFloat()) 0f else i.toFloat()) }
+            )
+        }
+        if (rating > 0f) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "${"%.1f".format(rating)}/5",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

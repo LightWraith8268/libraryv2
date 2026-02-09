@@ -3,17 +3,14 @@ package com.inknironapps.libraryiq.ui.screens.bookdetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.inknironapps.libraryiq.data.local.entity.Book
-import com.inknironapps.libraryiq.data.local.entity.BookWithCollections
 import com.inknironapps.libraryiq.data.local.entity.Collection
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.data.repository.BookRepository
 import com.inknironapps.libraryiq.data.repository.CollectionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -27,7 +24,8 @@ data class BookDetailUiState(
     val refreshMessage: String? = null,
     val editTitle: String = "",
     val editAuthor: String = "",
-    val editNotes: String = ""
+    val editNotes: String = "",
+    val editTags: String = ""
 )
 
 @HiltViewModel
@@ -48,7 +46,8 @@ class BookDetailViewModel @Inject constructor(
                         collections = bookWithCollections.collections,
                         editTitle = bookWithCollections.book.title,
                         editAuthor = bookWithCollections.book.author,
-                        editNotes = bookWithCollections.book.notes ?: ""
+                        editNotes = bookWithCollections.book.notes ?: "",
+                        editTags = bookWithCollections.book.tags ?: ""
                     )
                 }
             }
@@ -61,10 +60,37 @@ class BookDetailViewModel @Inject constructor(
         }
     }
 
+    /** Updates reading status - uses per-user sync (doesn't overwrite other users' status). */
     fun updateReadingStatus(status: ReadingStatus) {
         val book = _uiState.value.book ?: return
+        val now = System.currentTimeMillis()
+        val updated = when (status) {
+            ReadingStatus.READING -> book.copy(
+                readingStatus = status,
+                dateStarted = book.dateStarted ?: now
+            )
+            ReadingStatus.READ -> book.copy(
+                readingStatus = status,
+                dateFinished = book.dateFinished ?: now
+            )
+            else -> book.copy(readingStatus = status)
+        }
         viewModelScope.launch {
-            bookRepository.updateBook(book.copy(readingStatus = status))
+            bookRepository.updateReadingStatus(updated)
+        }
+    }
+
+    fun updateRating(rating: Float?) {
+        val book = _uiState.value.book ?: return
+        viewModelScope.launch {
+            bookRepository.updateReadingStatus(book.copy(rating = rating))
+        }
+    }
+
+    fun updateCurrentPage(page: Int?) {
+        val book = _uiState.value.book ?: return
+        viewModelScope.launch {
+            bookRepository.updateReadingStatus(book.copy(currentPage = page))
         }
     }
 
@@ -74,7 +100,8 @@ class BookDetailViewModel @Inject constructor(
             isEditing = !current.isEditing,
             editTitle = current.book?.title ?: "",
             editAuthor = current.book?.author ?: "",
-            editNotes = current.book?.notes ?: ""
+            editNotes = current.book?.notes ?: "",
+            editTags = current.book?.tags ?: ""
         )
     }
 
@@ -90,6 +117,10 @@ class BookDetailViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(editNotes = value)
     }
 
+    fun onEditTagsChange(value: String) {
+        _uiState.value = _uiState.value.copy(editTags = value)
+    }
+
     fun saveEdits() {
         val book = _uiState.value.book ?: return
         viewModelScope.launch {
@@ -97,7 +128,8 @@ class BookDetailViewModel @Inject constructor(
                 book.copy(
                     title = _uiState.value.editTitle.trim(),
                     author = _uiState.value.editAuthor.trim(),
-                    notes = _uiState.value.editNotes.trim().ifBlank { null }
+                    notes = _uiState.value.editNotes.trim().ifBlank { null },
+                    tags = _uiState.value.editTags.trim().ifBlank { null }
                 )
             )
             _uiState.value = _uiState.value.copy(isEditing = false)
@@ -117,7 +149,6 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isRefreshing = true, refreshMessage = null)
             try {
-                // Temporarily remove from local DB cache so lookupByIsbn doesn't short-circuit
                 val result = bookRepository.lookupByIsbnSkipLocal(isbn)
                 if (result.book != null) {
                     val fresh = result.book
@@ -136,7 +167,14 @@ class BookDetailViewModel @Inject constructor(
                         genre = book.genre ?: fresh.genre,
                         language = book.language ?: fresh.language,
                         format = book.format ?: fresh.format,
-                        subjects = book.subjects ?: fresh.subjects
+                        subjects = book.subjects ?: fresh.subjects,
+                        asin = book.asin ?: fresh.asin,
+                        goodreadsId = book.goodreadsId ?: fresh.goodreadsId,
+                        openLibraryId = book.openLibraryId ?: fresh.openLibraryId,
+                        hardcoverId = book.hardcoverId ?: fresh.hardcoverId,
+                        edition = book.edition ?: fresh.edition,
+                        originalTitle = book.originalTitle ?: fresh.originalTitle,
+                        originalLanguage = book.originalLanguage ?: fresh.originalLanguage
                     )
                     bookRepository.updateBook(updated)
                     _uiState.value = _uiState.value.copy(

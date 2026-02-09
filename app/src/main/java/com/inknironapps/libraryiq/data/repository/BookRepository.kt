@@ -57,6 +57,13 @@ class BookRepository @Inject constructor(
         firestoreSync.pushBook(updated)
     }
 
+    /** Update only per-user reading status (doesn't touch shared metadata in Firestore). */
+    suspend fun updateReadingStatus(book: Book) {
+        val updated = book.copy(dateModified = System.currentTimeMillis())
+        bookDao.updateBook(updated)
+        firestoreSync.pushUserStatus(updated)
+    }
+
     suspend fun deleteBook(book: Book) {
         bookDao.deleteBook(book)
         firestoreSync.deleteBook(book.id)
@@ -550,7 +557,14 @@ class BookRepository @Inject constructor(
             genre = primary.genre ?: secondary.genre,
             language = primary.language ?: secondary.language,
             format = primary.format ?: secondary.format,
-            subjects = primary.subjects ?: secondary.subjects
+            subjects = primary.subjects ?: secondary.subjects,
+            asin = primary.asin ?: secondary.asin,
+            goodreadsId = primary.goodreadsId ?: secondary.goodreadsId,
+            openLibraryId = primary.openLibraryId ?: secondary.openLibraryId,
+            hardcoverId = primary.hardcoverId ?: secondary.hardcoverId,
+            edition = primary.edition ?: secondary.edition,
+            originalTitle = primary.originalTitle ?: secondary.originalTitle,
+            originalLanguage = primary.originalLanguage ?: secondary.originalLanguage
         )
     }
 }

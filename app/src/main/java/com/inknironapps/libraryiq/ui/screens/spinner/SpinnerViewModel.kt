@@ -160,9 +160,10 @@ class SpinnerViewModel @Inject constructor(
 
         if (state.autoMarkReading && winner.readingStatus != ReadingStatus.READING) {
             viewModelScope.launch {
-                bookRepository.updateBook(
+                bookRepository.updateReadingStatus(
                     winner.copy(
                         readingStatus = ReadingStatus.READING,
+                        dateStarted = winner.dateStarted ?: System.currentTimeMillis(),
                         dateModified = System.currentTimeMillis()
                     )
                 )
