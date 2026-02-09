@@ -20,10 +20,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -91,6 +94,16 @@ fun BookDetailScreen(
                             Icon(Icons.Default.Check, contentDescription = "Save")
                         }
                     } else {
+                        if (uiState.isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp).padding(2.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(onClick = viewModel::refreshMetadata) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh metadata")
+                            }
+                        }
                         IconButton(onClick = viewModel::toggleEditing) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit")
                         }
@@ -261,6 +274,33 @@ fun BookDetailScreen(
                             ).format(java.util.Date(book.dateAdded))
                         )
                     }
+                }
+
+                OutlinedButton(
+                    onClick = viewModel::refreshMetadata,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isRefreshing && !book.isbn.isNullOrBlank()
+                ) {
+                    if (uiState.isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Refreshing...")
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Refresh Metadata")
+                    }
+                }
+
+                uiState.refreshMessage?.let { msg ->
+                    Text(
+                        text = msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 // --- Notes ---
