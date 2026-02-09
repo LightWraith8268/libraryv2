@@ -127,12 +127,9 @@ class BookRepository @Inject constructor(
         diag.add(if (hardcoverBook != null) "HC: ${hardcoverBook.title}" else
             if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) "HC: no token" else "HC: miss")
 
-        // 6. Amazon scraping (last resort, like Calibre)
-        val amazonBook = if (listOfNotNull(googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook).isEmpty()) {
-            tryAmazon(isbn).also {
-                diag.add(if (it != null) "AMZ: ${it.title}" else "AMZ: miss")
-            }
-        } else null
+        // 6. Amazon scraping (always try - best source for series, pages, descriptions)
+        val amazonBook = tryAmazon(isbn)
+        diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
 
         // Collect all ISBN-based results and merge
         val isbnSources = listOfNotNull(
@@ -161,10 +158,14 @@ class BookRepository @Inject constructor(
             }
         }
 
+        // Clean up the final title - strip edition/format suffixes
+        merged = merged.copy(title = cleanTitle(merged.title))
+
         val diagStr = diag.joinToString(" | ")
         DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
             "[cover=${merged.coverUrl != null}, desc=${merged.description != null}, " +
-            "pages=${merged.pageCount}, pub=${merged.publisher}]")
+            "pages=${merged.pageCount}, pub=${merged.publisher}, " +
+            "series=${merged.series} #${merged.seriesNumber}]")
         return LookupResult(merged, diagStr)
     }
 
@@ -512,11 +513,28 @@ class BookRepository @Inject constructor(
         }
     }
 
+    /**
+     * Strips common edition/format suffixes from titles.
+     * "Wildfire: Deluxe Edition Hardcover" → "Wildfire"
+     * "Book Title: A Novel" → "Book Title"
+     */
+    private fun cleanTitle(title: String): String {
+        return title
+            .replace(Regex("""\s*:\s*(?:Deluxe|Special|Collector['']?s?|Limited|Anniversary)\s+Edition.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*:\s*A\s+Novel.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\(\s*(?:A\s+)?\w+\s+Novel\s*\)""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+(?:Hardcover|Paperback|Mass\s+Market).*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
     private fun mergeBooks(primary: Book, secondary: Book): Book {
+        // Treat pageCount of 0 as missing
+        val primaryPages = primary.pageCount?.takeIf { it > 0 }
+        val secondaryPages = secondary.pageCount?.takeIf { it > 0 }
         return primary.copy(
             description = primary.description ?: secondary.description,
             coverUrl = primary.coverUrl ?: secondary.coverUrl,
-            pageCount = primary.pageCount ?: secondary.pageCount,
+            pageCount = primaryPages ?: secondaryPages,
             publisher = primary.publisher ?: secondary.publisher,
             publishedDate = primary.publishedDate ?: secondary.publishedDate,
             isbn10 = primary.isbn10 ?: secondary.isbn10,
