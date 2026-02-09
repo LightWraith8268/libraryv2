@@ -172,8 +172,10 @@ class AmazonMetadataScraper @Inject constructor() {
         val imageUrl = extractProductImage(html)
         val description = extractProductDescription(html)
         val publisher = extractDetailBullet(html, "Publisher")
+            ?: extractDetailBullet(html, "Imprint")
         val pages = extractPageCount(html)
         val pubDate = extractDetailBullet(html, "Publication date")
+            ?: extractDetailBullet(html, "Publish date")
 
         // Extract series from title tag parts or from product page HTML
         val seriesInfo = extractSeriesFromTitleParts(titleTagResult?.third)
@@ -398,26 +400,41 @@ class AmazonMetadataScraper @Inject constructor() {
      * Looks for the series link section on the page.
      */
     private fun extractSeriesFromHtml(html: String): Pair<String, String?>? {
-        // Pattern: "Book N of M: Series Name" or series section
-        val seriesLinkRegex = """id="seriesTitle"[^>]*>.*?<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.DOT_MATCHES_ALL)
-        val seriesName = seriesLinkRegex.find(html)?.groupValues?.get(1)?.trim()
-
-        // Pattern for "Book N" number
         val bookNumRegex = """(?:Book|Volume|Part)\s+(\d+)""".toRegex(RegexOption.IGNORE_CASE)
-        val seriesNumber = if (seriesName != null) {
-            // Look near the series title for the book number
-            val seriesSection = html.substringAfter("seriesTitle", "").take(500)
-            bookNumRegex.find(seriesSection)?.groupValues?.get(1)
-        } else null
 
-        if (seriesName != null) return Pair(seriesName, seriesNumber)
+        // Pattern 1: seriesTitle section (common on Amazon book pages)
+        // e.g., <div id="seriesTitle">Book 4 of 5: <a href="...">The Maple Hills</a></div>
+        val seriesSection = html.substringAfter("seriesTitle", "").take(500)
+        if (seriesSection.isNotEmpty()) {
+            val seriesLinkRegex = """<a[^>]*>([^<]+)</a>""".toRegex()
+            val seriesName = seriesLinkRegex.find(seriesSection)?.groupValues?.get(1)?.trim()
+            val seriesNumber = bookNumRegex.find(seriesSection)?.groupValues?.get(1)
+            if (seriesName != null) {
+                DebugLog.d(TAG, "Series from seriesTitle: '$seriesName' #$seriesNumber")
+                return Pair(seriesName, seriesNumber)
+            }
+        }
 
-        // Alternative: "Part of: <a>Series Name</a>" pattern
+        // Pattern 2: "Part of: <a>Series Name</a> (N books)" or "Series: ..."
         val partOfRegex = """(?:Part of|Series):\s*<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
         val partOf = partOfRegex.find(html)?.groupValues?.get(1)?.trim()
         if (partOf != null) {
             val num = bookNumRegex.find(html.substringAfter(partOf, "").take(200))?.groupValues?.get(1)
+            DebugLog.d(TAG, "Series from Part-of: '$partOf' #$num")
             return Pair(partOf, num)
+        }
+
+        // Pattern 3: Breadcrumb or detail bullets with series info
+        val seriesBullet = extractDetailBullet(html, "Series")
+        if (seriesBullet != null) {
+            // May be "The Maple Hills (Book 4)" or just "The Maple Hills"
+            val numInBullet = """\((?:Book|Vol\.?|#)\s*(\d+)\)""".toRegex(RegexOption.IGNORE_CASE)
+                .find(seriesBullet)?.groupValues?.get(1)
+            val name = seriesBullet.replace("""\s*\([^)]*\)""".toRegex(), "").trim()
+            if (name.isNotBlank()) {
+                DebugLog.d(TAG, "Series from bullet: '$name' #$numInBullet")
+                return Pair(name, numInBullet)
+            }
         }
 
         return null

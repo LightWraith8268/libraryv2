@@ -4,6 +4,7 @@ import com.inknironapps.libraryiq.BuildConfig
 import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.HardcoverApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
+import com.inknironapps.libraryiq.util.DebugLog
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -22,8 +23,19 @@ object NetworkModule {
     @Singleton
     @Named("googleBooks")
     fun provideGoogleBooksRetrofit(): Retrofit {
+        val client = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                if (!response.isSuccessful) {
+                    val body = response.peekBody(1024).string()
+                    DebugLog.e("GoogleBooksAPI", "HTTP ${response.code}: $body")
+                }
+                response
+            }
+            .build()
         return Retrofit.Builder()
             .baseUrl(BookApiService.BASE_URL)
+            .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
@@ -45,15 +57,20 @@ object NetworkModule {
         val client = OkHttpClient.Builder()
             .addInterceptor { chain ->
                 val token = BuildConfig.HARDCOVER_API_TOKEN
-                if (token.isNotEmpty()) {
-                    val request = chain.request().newBuilder()
+                val request = if (token.isNotEmpty()) {
+                    chain.request().newBuilder()
                         .addHeader("Authorization", "Bearer $token")
                         .addHeader("Content-Type", "application/json")
                         .build()
-                    chain.proceed(request)
                 } else {
-                    chain.proceed(chain.request())
+                    chain.request()
                 }
+                val response = chain.proceed(request)
+                if (!response.isSuccessful) {
+                    val body = response.peekBody(1024).string()
+                    DebugLog.e("HardcoverAPI", "HTTP ${response.code}: $body")
+                }
+                response
             }
             .build()
 
