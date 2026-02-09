@@ -177,9 +177,15 @@ class AmazonMetadataScraper @Inject constructor() {
         val pubDate = extractDetailBullet(html, "Publication date")
             ?: extractDetailBullet(html, "Publish date")
 
-        // Extract series from title tag parts or from product page HTML
-        val seriesInfo = extractSeriesFromTitleParts(titleTagResult?.third)
-            ?: extractSeriesFromHtml(html)
+        // Extract series from multiple sources and combine
+        val titleSeries = extractSeriesFromTitleParts(titleTagResult?.third)
+        val htmlSeries = extractSeriesFromHtml(html)
+        // Combine: prefer name from title-tag, number from whichever has it
+        val seriesName = titleSeries?.first?.takeIf { it.isNotBlank() }
+            ?: htmlSeries?.first?.takeIf { it.isNotBlank() }
+        val seriesNumber = titleSeries?.second
+            ?: htmlSeries?.second
+        val seriesInfo = if (seriesName != null) Pair(seriesName, seriesNumber) else null
 
         DebugLog.d(TAG, "Product page: '$title' by '$author', " +
             "image=${imageUrl != null}, pages=$pages, publisher=$publisher, " +
@@ -435,6 +441,24 @@ class AmazonMetadataScraper @Inject constructor() {
                 DebugLog.d(TAG, "Series from bullet: '$name' #$numInBullet")
                 return Pair(name, numInBullet)
             }
+        }
+
+        // Pattern 4: "#N in <a>Series Name</a>" anywhere in the page
+        val hashInRegex = """#(\d+)\s+in\s+<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
+        hashInRegex.find(html)?.let {
+            val num = it.groupValues[1]
+            val name = it.groupValues[2].trim()
+            DebugLog.d(TAG, "Series from #N-in pattern: '$name' #$num")
+            return Pair(name, num)
+        }
+
+        // Pattern 5: Broad search for "Book N of N" near any series-like link
+        // Just return the number if found anywhere prominent
+        val broadNumRegex = """Book\s+(\d+)\s+of\s+\d+""".toRegex(RegexOption.IGNORE_CASE)
+        val broadNum = broadNumRegex.find(html)?.groupValues?.get(1)
+        if (broadNum != null) {
+            DebugLog.d(TAG, "Series number from broad 'Book N of M': #$broadNum (no name)")
+            return Pair("", broadNum) // empty name, caller should combine with title-tag name
         }
 
         return null

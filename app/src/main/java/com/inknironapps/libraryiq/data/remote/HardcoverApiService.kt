@@ -53,10 +53,10 @@ interface HardcoverApiService {
 
         fun buildTitleQuery(title: String): GraphQLRequest {
             // Query through editions table (which we have access to) with
-            // a book title filter, instead of querying books table directly
+            // a book title filter. Use _eq since _ilike is not permitted.
             val query = """
                 query BookByTitle(${'$'}title: String!) {
-                    editions(where: {book: {title: {_ilike: ${'$'}title}}}, limit: 3, order_by: {release_date: desc}) {
+                    editions(where: {book: {title: {_eq: ${'$'}title}}}, limit: 3, order_by: {release_date: desc}) {
                         isbn_13
                         isbn_10
                         pages
@@ -88,7 +88,7 @@ interface HardcoverApiService {
             """.trimIndent()
             return GraphQLRequest(
                 query = query,
-                variables = mapOf("title" to "%$title%")
+                variables = mapOf("title" to title)
             )
         }
     }
