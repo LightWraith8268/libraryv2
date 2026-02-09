@@ -43,6 +43,13 @@ class AmazonMetadataScraper @Inject constructor() {
 
             val html = fetchPage(url) ?: return@withContext null
 
+            // Extract series info from search result title before trying product pages
+            // Search results often have "(Series Name Book N)" which product pages may lack
+            val searchSeriesInfo = extractSearchTitle(html)?.let { extractSeriesFromText(it) }
+            if (searchSeriesInfo != null) {
+                DebugLog.d(TAG, "Series from search title: ${searchSeriesInfo.first} #${searchSeriesInfo.second}")
+            }
+
             // Extract all unique ASINs from search results
             val asins = extractAllAsins(html)
             DebugLog.d(TAG, "Found ${asins.size} ASINs: ${asins.take(5)}")
@@ -52,7 +59,7 @@ class AmazonMetadataScraper @Inject constructor() {
                 if (asin.startsWith("B")) continue
                 DebugLog.d(TAG, "Trying physical ASIN: $asin")
                 val productBook = fetchProductPage(asin, isbn)
-                if (productBook != null) return@withContext productBook
+                if (productBook != null) return@withContext mergeSearchSeries(productBook, searchSeriesInfo)
             }
 
             // Then try B-ASINs (some physical books only have B-ASINs)
@@ -60,7 +67,7 @@ class AmazonMetadataScraper @Inject constructor() {
                 if (!asin.startsWith("B")) continue
                 DebugLog.d(TAG, "Trying B-ASIN: $asin")
                 val productBook = fetchProductPage(asin, isbn)
-                if (productBook != null) return@withContext productBook
+                if (productBook != null) return@withContext mergeSearchSeries(productBook, searchSeriesInfo)
             }
 
             // Fallback: parse search results directly
@@ -69,6 +76,20 @@ class AmazonMetadataScraper @Inject constructor() {
             DebugLog.e(TAG, "Lookup failed for $isbn", e)
             null
         }
+    }
+
+    /**
+     * Merges series info from search results into a product page result.
+     * Search results often have "Book N" in the title which the product page lacks.
+     */
+    private fun mergeSearchSeries(book: Book, searchSeries: Pair<String, String?>?): Book {
+        if (searchSeries == null) return book
+        // If product page already has complete series info, keep it
+        if (book.series != null && book.seriesNumber != null) return book
+        return book.copy(
+            series = book.series ?: searchSeries.first,
+            seriesNumber = book.seriesNumber ?: searchSeries.second
+        )
     }
 
     /**
@@ -192,7 +213,7 @@ class AmazonMetadataScraper @Inject constructor() {
         // Format: "Book Title: Author Last, First: 9781234567890: Amazon.com: Books"
         val titleTagResult = parseHtmlTitleTag(html)
 
-        val title = titleTagResult?.first
+        var title = titleTagResult?.first
             ?: extractProductTitleFromHtml(html)
         if (title == null) {
             DebugLog.d(TAG, "No title found in product page")
@@ -219,6 +240,13 @@ class AmazonMetadataScraper @Inject constructor() {
         val seriesNumber = titleSeries?.second
             ?: htmlSeries?.second
         val seriesInfo = if (seriesName != null) Pair(seriesName, seriesNumber) else null
+
+        // Strip series parenthetical from title if we extracted it
+        if (seriesName != null) {
+            title = title
+                .replace(Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:Book|Vol\.?|#)\s*\d+)?\s*\)""", RegexOption.IGNORE_CASE), "")
+                .trim()
+        }
 
         val format = extractFormat(html)
 

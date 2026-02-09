@@ -158,8 +158,8 @@ class BookRepository @Inject constructor(
             }
         }
 
-        // Clean up the final title - strip edition/format suffixes
-        merged = merged.copy(title = cleanTitle(merged.title))
+        // Clean up the final title - strip edition/format suffixes and series parentheticals
+        merged = merged.copy(title = cleanTitle(merged.title, merged.series))
 
         val diagStr = diag.joinToString(" | ")
         DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
@@ -519,13 +519,19 @@ class BookRepository @Inject constructor(
      * "Wildfire: Deluxe Edition Hardcover" → "Wildfire"
      * "Book Title: A Novel" → "Book Title"
      */
-    private fun cleanTitle(title: String): String {
-        return title
+    private fun cleanTitle(title: String, seriesName: String? = null): String {
+        var cleaned = title
             .replace(Regex("""\s*:\s*(?:Deluxe|Special|Collector['']?s?|Limited|Anniversary)\s+Edition.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*:\s*A\s+Novel.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*\(\s*(?:A\s+)?\w+\s+Novel\s*\)""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+(?:Hardcover|Paperback|Mass\s+Market).*$""", RegexOption.IGNORE_CASE), "")
-            .trim()
+        // Strip series parenthetical if we know the series name
+        if (seriesName != null) {
+            cleaned = cleaned.replace(
+                Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:Book|Vol\.?|#)\s*\d+)?\s*\)""", RegexOption.IGNORE_CASE), ""
+            )
+        }
+        return cleaned.trim()
     }
 
     private fun mergeBooks(primary: Book, secondary: Book): Book {
