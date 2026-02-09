@@ -124,28 +124,111 @@ class BookRepository @Inject constructor(
             }
         } else null
 
-        val diagStr = diag.joinToString(" | ")
-        DebugLog.d(TAG, "Diagnostics: $diagStr")
-
-        // Collect all results and merge
-        val sources = listOfNotNull(
+        // Collect all ISBN-based results and merge
+        val isbnSources = listOfNotNull(
             googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook, amazonBook
         )
 
-        if (sources.isNotEmpty()) {
-            val merged = sources.drop(1).fold(sources.first()) { acc, book ->
-                mergeBooks(acc, book)
-            }
-            DebugLog.d(TAG, "Final result: ${merged.title} by ${merged.author}")
-            return LookupResult(merged, diagStr)
+        if (isbnSources.isEmpty()) {
+            val diagStr = diag.joinToString(" | ")
+            DebugLog.d(TAG, "No sources found for ISBN: $isbn")
+            return LookupResult(null, diagStr)
         }
 
-        DebugLog.d(TAG, "No sources found for ISBN: $isbn")
-        return LookupResult(null, diagStr)
+        var merged = isbnSources.drop(1).fold(isbnSources.first()) { acc, book ->
+            mergeBooks(acc, book)
+        }
+
+        // 7. Title-based enrichment: if metadata is incomplete, search by title+author
+        if (needsEnrichment(merged)) {
+            DebugLog.d(TAG, "Metadata incomplete, enriching by title: '${merged.title}' by '${merged.author}'")
+            val titleSources = searchByTitle(merged.title, merged.author, isbn)
+            for (enrichment in titleSources) {
+                merged = mergeBooks(merged, enrichment)
+            }
+            if (titleSources.isNotEmpty()) {
+                diag.add("title-enrich: ${titleSources.size} hit(s)")
+            }
+        }
+
+        val diagStr = diag.joinToString(" | ")
+        DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
+            "[cover=${merged.coverUrl != null}, desc=${merged.description != null}, " +
+            "pages=${merged.pageCount}, pub=${merged.publisher}]")
+        return LookupResult(merged, diagStr)
     }
 
     var lastErrors = mutableListOf<String>()
         private set
+
+    /**
+     * Checks if a book result is missing important metadata that
+     * could be filled by searching other APIs by title.
+     */
+    private fun needsEnrichment(book: Book): Boolean {
+        val missingFields = listOf(
+            book.coverUrl == null,
+            book.description == null,
+            book.pageCount == null,
+            book.publisher == null,
+            book.author == "Unknown Author"
+        )
+        return missingFields.count { it } >= 2
+    }
+
+    /**
+     * Searches Google Books and Open Library by title+author to
+     * find additional metadata for an already-identified book.
+     */
+    private suspend fun searchByTitle(title: String, author: String, isbn: String): List<Book> {
+        val results = mutableListOf<Book>()
+        val searchQuery = if (author != "Unknown Author") {
+            "$title $author"
+        } else {
+            title
+        }
+
+        // Google Books title search
+        try {
+            val response = bookApiService.searchByIsbn("intitle:$title+inauthor:$author")
+            val bestMatch = response.items?.firstOrNull()
+            if (bestMatch != null) {
+                val book = googleBookToBook(bestMatch, isbn)
+                DebugLog.d(TAG, "GB(title): found '${book.title}' by ${book.author}")
+                results.add(book)
+            } else {
+                DebugLog.d(TAG, "GB(title): no results for '$searchQuery'")
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "GB(title) error: ${e.message}")
+        }
+
+        // Open Library title search
+        try {
+            val searchResponse = openLibraryApiService.search(searchQuery)
+            val bestMatch = searchResponse.docs?.firstOrNull()
+            if (bestMatch != null) {
+                val book = Book(
+                    title = bestMatch.title ?: title,
+                    author = bestMatch.authorNames?.joinToString(", ") ?: author,
+                    isbn = isbn,
+                    coverUrl = bestMatch.coverId?.let { OpenLibraryApiService.coverUrl(it, "L") },
+                    pageCount = bestMatch.pageCount,
+                    publisher = bestMatch.publishers?.firstOrNull(),
+                    publishedDate = bestMatch.publishDates?.firstOrNull(),
+                    subjects = bestMatch.subjects?.take(10)?.joinToString(", ")
+                )
+                DebugLog.d(TAG, "OL(title): found '${book.title}' by ${book.author}")
+                results.add(book)
+            } else {
+                DebugLog.d(TAG, "OL(title): no results for '$searchQuery'")
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "OL(title) error: ${e.message}")
+        }
+
+        return results
+    }
 
     private suspend fun tryGoogleBooksIsbn(isbn: String): Book? {
         return try {
