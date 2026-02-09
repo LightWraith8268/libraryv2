@@ -197,10 +197,11 @@ class BookRepository @Inject constructor(
     private suspend fun searchByTitle(title: String, author: String, isbn: String): List<Book> {
         val results = mutableListOf<Book>()
 
-        // Strip common edition suffixes for a cleaner base title search
+        // Strip common edition suffixes and series parentheticals for a cleaner search
         val baseTitle = title
             .replace(Regex("""\s*:\s*(Deluxe|Special|Collector['']?s?|Limited|Anniversary)\s+Edition.*""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+(Hardcover|Paperback|Mass Market).*""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\([^)]*\)\s*$"""), "") // Strip trailing parentheticals like "(Series Book 1)"
             .trim()
 
         val searchQuery = if (author != "Unknown Author") {
