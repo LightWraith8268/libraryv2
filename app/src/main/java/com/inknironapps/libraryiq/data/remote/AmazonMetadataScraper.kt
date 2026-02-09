@@ -179,9 +179,10 @@ class AmazonMetadataScraper @Inject constructor() {
 
         // Extract series from multiple sources and combine
         val titleSeries = extractSeriesFromTitleParts(titleTagResult?.third)
-        val htmlSeries = extractSeriesFromHtml(html)
+        val knownSeriesName = titleSeries?.first?.takeIf { it.isNotBlank() }
+        val htmlSeries = extractSeriesFromHtml(html, knownSeriesName)
         // Combine: prefer name from title-tag, number from whichever has it
-        val seriesName = titleSeries?.first?.takeIf { it.isNotBlank() }
+        val seriesName = knownSeriesName
             ?: htmlSeries?.first?.takeIf { it.isNotBlank() }
         val seriesNumber = titleSeries?.second
             ?: htmlSeries?.second
@@ -404,8 +405,10 @@ class AmazonMetadataScraper @Inject constructor() {
     /**
      * Extracts series info from Amazon product page HTML.
      * Looks for the series link section on the page.
+     * @param knownSeriesName If we already found the series name (from title tag),
+     *   use it to search for the number nearby in the HTML.
      */
-    private fun extractSeriesFromHtml(html: String): Pair<String, String?>? {
+    private fun extractSeriesFromHtml(html: String, knownSeriesName: String? = null): Pair<String, String?>? {
         val bookNumRegex = """(?:Book|Volume|Part)\s+(\d+)""".toRegex(RegexOption.IGNORE_CASE)
 
         // Pattern 1: seriesTitle section (common on Amazon book pages)
@@ -452,13 +455,21 @@ class AmazonMetadataScraper @Inject constructor() {
             return Pair(name, num)
         }
 
-        // Pattern 5: Broad search for "Book N of N" near any series-like link
-        // Just return the number if found anywhere prominent
-        val broadNumRegex = """Book\s+(\d+)\s+of\s+\d+""".toRegex(RegexOption.IGNORE_CASE)
-        val broadNum = broadNumRegex.find(html)?.groupValues?.get(1)
-        if (broadNum != null) {
-            DebugLog.d(TAG, "Series number from broad 'Book N of M': #$broadNum (no name)")
-            return Pair("", broadNum) // empty name, caller should combine with title-tag name
+        // Pattern 5: If we know the series name, look for "Book N" near it in HTML
+        if (knownSeriesName != null) {
+            // Search for series name in HTML, then look for "Book N" within 300 chars
+            val nameIndex = html.indexOf(knownSeriesName, ignoreCase = true)
+            if (nameIndex >= 0) {
+                // Look in a window around the series name mention
+                val start = (nameIndex - 200).coerceAtLeast(0)
+                val end = (nameIndex + knownSeriesName.length + 200).coerceAtMost(html.length)
+                val window = html.substring(start, end)
+                val num = bookNumRegex.find(window)?.groupValues?.get(1)
+                if (num != null) {
+                    DebugLog.d(TAG, "Series number from near '$knownSeriesName': #$num")
+                    return Pair(knownSeriesName, num)
+                }
+            }
         }
 
         return null
