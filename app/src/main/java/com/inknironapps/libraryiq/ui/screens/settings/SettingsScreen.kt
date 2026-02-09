@@ -1,6 +1,7 @@
 package com.inknironapps.libraryiq.ui.screens.settings
 
 import android.app.Activity
+import com.inknironapps.libraryiq.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
@@ -546,7 +547,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "LibraryIQ v1.0",
+                            text = "LibraryIQ v${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.titleMedium
                         )
                     }

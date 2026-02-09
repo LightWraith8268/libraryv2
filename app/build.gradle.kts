@@ -8,6 +8,14 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Semantic versioning: MAJOR.MINOR.PATCH
+// MAJOR: breaking changes / major redesigns
+// MINOR: new features (backward compatible)
+// PATCH: bug fixes and small improvements
+val versionMajor = 1
+val versionMinor = 3
+val versionPatch = 0
+
 android {
     namespace = "com.inknironapps.libraryiq"
     compileSdk = 34
@@ -16,8 +24,8 @@ android {
         applicationId = "com.inknironapps.libraryiq"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = versionMajor * 10000 + versionMinor * 100 + versionPatch
+        versionName = "$versionMajor.$versionMinor.$versionPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
