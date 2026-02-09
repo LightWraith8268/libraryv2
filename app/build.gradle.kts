@@ -8,17 +8,11 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-// Semantic versioning: MAJOR.MINOR.PATCH
-// MAJOR: breaking changes / major redesigns
-// MINOR: new features (backward compatible)
-// PATCH: bug fixes and small improvements
-// Each number can grow without limit (no 99 cap).
-// versionBuild is a separate monotonic counter for Play Store -
-// increment it with every release regardless of version numbers.
-val versionMajor = 1
-val versionMinor = 7
-val versionPatch = 0
-val versionBuild = 15  // Bump this with every release
+// Version numbers are defined in gradle.properties to minimize merge conflicts.
+val versionMajor = property("app.versionMajor").toString().toInt()
+val versionMinor = property("app.versionMinor").toString().toInt()
+val versionPatch = property("app.versionPatch").toString().toInt()
+val versionBuild = property("app.versionBuild").toString().toInt()
 
 android {
     namespace = "com.inknironapps.libraryiq"
