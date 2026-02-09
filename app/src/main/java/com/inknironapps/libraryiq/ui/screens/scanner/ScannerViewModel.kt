@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.inknironapps.libraryiq.data.local.entity.Book
 import com.inknironapps.libraryiq.data.repository.BookRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,10 +32,11 @@ class ScannerViewModel @Inject constructor(
     val uiState: StateFlow<ScannerUiState> = _uiState.asStateFlow()
 
     private var lastScannedIsbn: String? = null
+    private var lookupJob: Job? = null
 
     fun onBarcodeDetected(rawValue: String) {
-        // Avoid duplicate scans of the same barcode
-        if (rawValue == lastScannedIsbn) return
+        // Only accept one barcode per scan session; ignore all others until scanAgain()
+        if (lastScannedIsbn != null) return
         lastScannedIsbn = rawValue
 
         _uiState.update {
@@ -47,7 +49,7 @@ class ScannerViewModel @Inject constructor(
             )
         }
 
-        viewModelScope.launch {
+        lookupJob = viewModelScope.launch {
             try {
                 val result = bookRepository.lookupByIsbn(rawValue)
                 if (result.book != null) {
@@ -67,6 +69,8 @@ class ScannerViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // Don't swallow cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLookingUp = false, error = "Lookup failed: ${e.message}")
