@@ -35,12 +35,9 @@ class ScannerViewModel @Inject constructor(
     private var lookupJob: Job? = null
 
     fun onBarcodeDetected(rawValue: String) {
-        // Avoid duplicate scans of the same barcode
-        if (rawValue == lastScannedIsbn) return
+        // Only accept one barcode per scan session; ignore all others until scanAgain()
+        if (lastScannedIsbn != null) return
         lastScannedIsbn = rawValue
-
-        // Cancel any in-flight lookup so it doesn't interfere
-        lookupJob?.cancel()
 
         _uiState.update {
             it.copy(
