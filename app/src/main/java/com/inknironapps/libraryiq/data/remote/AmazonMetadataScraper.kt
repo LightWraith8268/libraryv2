@@ -13,7 +13,13 @@ import javax.inject.Singleton
 /**
  * Scrapes Amazon product pages for book metadata, similar to how
  * Calibre's Amazon metadata plugin works. Fetches the product page
- * by ISBN and parses meta tags / structured data from the HTML.
+ * by ISBN and parses the Product Details section and other structured
+ * data from the HTML.
+ *
+ * Handles both Amazon HTML layouts:
+ * - Layout A: Detail bullets list (detailBullets_feature_div)
+ * - Layout B: Product details table (productDetails_detailBullets_sections1)
+ * - Product overview table (productOverview_feature_div)
  *
  * Extracts: title, author, cover, description, pages, publisher,
  * publishedDate, format, series/seriesNumber, language, genre/subjects,
@@ -204,7 +210,9 @@ class AmazonMetadataScraper @Inject constructor() {
         return imgRegex.find(html)?.groupValues?.get(1)
     }
 
-    // --- Product Page Parsing ---
+    // =====================================================================
+    // Product Page Parsing
+    // =====================================================================
 
     private fun parseProductPage(html: String, isbn: String, asin: String): Book? {
         // Skip eBooks / Kindle editions - only want physical books
@@ -212,6 +220,10 @@ class AmazonMetadataScraper @Inject constructor() {
             DebugLog.d(TAG, "Skipping eBook/Kindle edition")
             return null
         }
+
+        // Parse ALL product details into a unified key-value map.
+        // This reads from detail bullets, product details table, and product overview.
+        val details = parseAllProductDetails(html)
 
         // Most reliable: parse <title> tag
         // Format: "Book Title: Author Last, First: 9781234567890: Amazon.com: Books"
@@ -228,11 +240,27 @@ class AmazonMetadataScraper @Inject constructor() {
             ?: titleTagResult?.second
         val imageUrl = extractProductImage(html)
         val description = extractProductDescription(html)
-        val publisher = extractDetailBullet(html, "Publisher")
+
+        // Publisher and publication date from details map.
+        // Amazon often combines them: "Publisher Name; 1st edition (March 1, 2024)"
+        val publisherRaw = details.getByKeys("Publisher", "Imprint")
+        val publisher = publisherRaw
+            ?.replace(Regex("""\s*;.*"""), "")      // Remove "; 1st edition (date)"
+            ?.replace(Regex("""\s*\([^)]*\d{4}[^)]*\)"""), "")  // Remove "(March 1, 2024)"
+            ?.trim()
+            ?.ifBlank { null }
+            ?: extractDetailBullet(html, "Publisher")
             ?: extractDetailBullet(html, "Imprint")
-        val pages = extractPageCount(html)
-        val pubDate = extractDetailBullet(html, "Publication date")
+
+        val pubDate = details.getByKeys("Publication date", "Publish date")
+            ?: publisherRaw?.let {
+                // Extract date from publisher field: "Publisher (March 1, 2024)"
+                Regex("""\(([^)]*\d{4}[^)]*)\)""").find(it)?.groupValues?.get(1)
+            }
+            ?: extractDetailBullet(html, "Publication date")
             ?: extractDetailBullet(html, "Publish date")
+
+        val pages = extractPageCount(html, details)
 
         // Extract series from multiple sources and combine
         val titleSeries = extractSeriesFromTitleParts(titleTagResult?.third)
@@ -253,17 +281,18 @@ class AmazonMetadataScraper @Inject constructor() {
         }
 
         val format = extractFormat(html)
-        val language = extractLanguage(html)
-        val genres = extractGenres(html)
-        val isbn10 = extractIsbn10(html, asin)
+            ?: details.getByKeys("Format", "Binding")
+        val language = extractLanguage(html, details)
+        val genres = extractAllGenres(html)
+        val isbn10 = extractIsbn10(html, asin, details)
         val detectedAsin = extractAsin(html, asin)
-        val edition = extractEdition(html, title)
+        val edition = extractEdition(html, title, details)
 
         DebugLog.d(TAG, "Product page: '$title' by '$author', " +
             "image=${imageUrl != null}, pages=$pages, publisher=$publisher, " +
             "format=$format, series=${seriesInfo?.first} #${seriesInfo?.second}, " +
-            "lang=$language, genres=${genres?.take(60)}, isbn10=$isbn10, " +
-            "asin=$detectedAsin, edition=$edition")
+            "lang=$language, genres=${genres?.take(80)}, isbn10=$isbn10, " +
+            "asin=$detectedAsin, edition=$edition, details=${details.size} fields")
 
         return Book(
             title = cleanTitle(title),
@@ -284,6 +313,129 @@ class AmazonMetadataScraper @Inject constructor() {
             edition = edition
         )
     }
+
+    // =====================================================================
+    // Product Details Map - unified parsing of ALL detail key-value pairs
+    // =====================================================================
+
+    /**
+     * Parses ALL key-value pairs from the Product Details section into a map.
+     * Handles both Amazon HTML layouts (A/B tested):
+     *
+     * Layout A - Detail Bullets list:
+     *   <span class="a-text-bold">Label‏ : ‎</span><span>Value</span>
+     *
+     * Layout B - Product Details table:
+     *   <th class="prodDetSectionEntry">Label</th><td class="prodDetAttrValue">Value</td>
+     *
+     * Also reads the Product Overview table for additional fields.
+     */
+    private fun parseAllProductDetails(html: String): Map<String, String> {
+        val details = mutableMapOf<String, String>()
+
+        // --- Layout A: Detail Bullets list ---
+        // Labels are in <span class="a-text-bold"> with Unicode marks around the colon.
+        // Values are in the immediately following <span>.
+        val bulletSection = extractHtmlSection(html, "detailBullets_feature_div", 8000)
+            ?: extractHtmlSection(html, "detailBulletsWrapper_feature_div", 8000)
+        if (bulletSection != null) {
+            val bulletRegex = """<span[^>]*class="a-text-bold"[^>]*>\s*([^<]+?)\s*</span>\s*(?:</span>\s*)?<span[^>]*>\s*([^<]+)"""
+                .toRegex(RegexOption.DOT_MATCHES_ALL)
+            for (match in bulletRegex.findAll(bulletSection)) {
+                val rawLabel = match.groupValues[1]
+                    .replace(Regex("""[\u200F\u200E\u00A0:]+"""), " ")
+                    .replace(Regex("""&[lr]rm;|&nbsp;"""), " ")
+                    .trim()
+                val value = match.groupValues[2]
+                    .replace(Regex("""[\u200F\u200E\u00A0]+"""), " ")
+                    .trim()
+                if (isValidDetailEntry(rawLabel, value)) {
+                    details.putIfAbsent(rawLabel, value)
+                }
+            }
+        }
+
+        // --- Layout B: Product Details table ---
+        // Labels are in <th>, values in <td>.
+        val tableSection = extractHtmlSection(html, "productDetails_detailBullets_sections1", 8000)
+            ?: extractHtmlSection(html, "productDetails_feature_div", 8000)
+            ?: extractHtmlSection(html, "prodDetails", 8000)
+        if (tableSection != null) {
+            val tableRegex = """<th[^>]*>\s*([^<]+?)\s*</th>\s*<td[^>]*>\s*([^<]+?)(?:\s*<)"""
+                .toRegex(RegexOption.IGNORE_CASE)
+            for (match in tableRegex.findAll(tableSection)) {
+                val label = match.groupValues[1].trim()
+                val value = match.groupValues[2]
+                    .replace(Regex("""[\u200F\u200E\u00A0]+"""), " ")
+                    .trim()
+                if (isValidDetailEntry(label, value)) {
+                    details.putIfAbsent(label, value)
+                }
+            }
+        }
+
+        // --- Product Overview table ---
+        // Structured as: <td><span class="a-text-bold">Label</span></td><td><span>Value</span></td>
+        val overviewSection = extractHtmlSection(html, "productOverview_feature_div", 5000)
+        if (overviewSection != null) {
+            val overviewRegex = """<span[^>]*a-text-bold[^>]*>\s*([^<]+?)\s*</span>\s*</td>\s*<td[^>]*>\s*<span[^>]*>\s*([^<]+?)"""
+                .toRegex(RegexOption.DOT_MATCHES_ALL)
+            for (match in overviewRegex.findAll(overviewSection)) {
+                val label = match.groupValues[1].trim()
+                val value = match.groupValues[2].trim()
+                if (isValidDetailEntry(label, value)) {
+                    details.putIfAbsent(label, value)
+                }
+            }
+        }
+
+        if (details.isNotEmpty()) {
+            DebugLog.d(TAG, "Product details (${details.size} entries): ${details.entries.joinToString { "${it.key}=${it.value.take(40)}" }}")
+        }
+        return details
+    }
+
+    /**
+     * Extracts a section of HTML starting from an element with the given ID.
+     * Returns up to [maxLen] characters starting from the ID attribute.
+     */
+    private fun extractHtmlSection(html: String, id: String, maxLen: Int): String? {
+        val idIndex = html.indexOf("id=\"$id\"")
+        if (idIndex < 0) return null
+        val start = (idIndex - 100).coerceAtLeast(0)
+        val end = (idIndex + maxLen).coerceAtMost(html.length)
+        return html.substring(start, end)
+    }
+
+    /** Validates a detail entry label/value pair before adding to the map. */
+    private fun isValidDetailEntry(label: String, value: String): Boolean {
+        return label.length in 2..60 &&
+            value.isNotBlank() &&
+            value.length < 300 &&
+            !label.equals("Best Sellers Rank", ignoreCase = true) &&
+            !label.equals("Customer Reviews", ignoreCase = true) &&
+            !label.startsWith("http", ignoreCase = true)
+    }
+
+    /**
+     * Looks up a value from the details map by trying multiple key names.
+     * Amazon uses different labels across layouts (e.g. "Print length" vs "Paperback").
+     */
+    private fun Map<String, String>.getByKeys(vararg keys: String): String? {
+        for (key in keys) {
+            // Try exact match first
+            val exact = this[key]
+            if (exact != null) return exact
+            // Try case-insensitive match
+            val entry = entries.firstOrNull { it.key.equals(key, ignoreCase = true) }
+            if (entry != null) return entry.value
+        }
+        return null
+    }
+
+    // =====================================================================
+    // Title, Author, Image, Description extraction
+    // =====================================================================
 
     /**
      * Parses the HTML <title> tag which is the most reliable metadata source.
@@ -418,25 +570,46 @@ class AmazonMetadataScraper @Inject constructor() {
         return null
     }
 
-    private fun extractPageCount(html: String): Int? {
-        // "X pages" pattern in detail section
+    // =====================================================================
+    // Metadata extraction from Product Details map + fallback regexes
+    // =====================================================================
+
+    /**
+     * Extracts page count from the details map or HTML.
+     * Amazon labels it differently per format: "Paperback", "Hardcover", "Print length", "Pages".
+     */
+    private fun extractPageCount(html: String, details: Map<String, String>): Int? {
+        // From details map - try format-specific keys and generic keys
+        val pageKeys = listOf("Print length", "Paperback", "Hardcover", "Pages",
+            "Mass Market Paperback", "Board Book", "Library Binding", "Spiral-bound")
+        for (key in pageKeys) {
+            val value = details.getByKeys(key)
+            if (value != null) {
+                val pages = Regex("""(\d{2,4})\s*pages""", RegexOption.IGNORE_CASE)
+                    .find(value)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: Regex("""^(\d{2,4})$""").find(value.trim())?.groupValues?.get(1)?.toIntOrNull()
+                if (pages != null) return pages
+            }
+        }
+
+        // Fallback: "X pages" anywhere in HTML
         val pagesRegex = """(\d{2,4})\s+pages""".toRegex(RegexOption.IGNORE_CASE)
         return pagesRegex.find(html)?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    // --- New metadata extraction ---
-
     /**
-     * Extracts language from detail bullets or product information table.
-     * Amazon shows this as "Language : English" in the detail section.
+     * Extracts language from details map or HTML.
      */
-    private fun extractLanguage(html: String): String? {
-        // Detail bullet pattern
+    private fun extractLanguage(html: String, details: Map<String, String>): String? {
+        // Details map
+        val fromDetails = details.getByKeys("Language")
+        if (fromDetails != null && fromDetails.length < 30) return fromDetails
+
+        // Detail bullet fallback
         val bullet = extractDetailBullet(html, "Language")
         if (bullet != null) return bullet
 
-        // Product information table pattern:
-        // <th>Language</th><td>English</td>
+        // Table fallback
         val tableRegex = """<th[^>]*>\s*Language\s*</th>\s*<td[^>]*>\s*([^<]+)</td>"""
             .toRegex(RegexOption.IGNORE_CASE)
         val tableMatch = tableRegex.find(html)?.groupValues?.get(1)?.trim()
@@ -446,72 +619,18 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     /**
-     * Extracts genres/categories from Amazon breadcrumbs and Best Sellers Rank.
-     * Returns comma-separated genres string.
+     * Extracts ISBN-10 from details map, HTML, or ASIN.
      */
-    private fun extractGenres(html: String): String? {
-        val genres = mutableSetOf<String>()
+    private fun extractIsbn10(html: String, asin: String, details: Map<String, String>): String? {
+        // Details map
+        val fromDetails = details.getByKeys("ISBN-10")
+        if (fromDetails != null && fromDetails.matches(Regex("""\d{9}[\dXx]"""))) return fromDetails
 
-        // Pattern 1: Breadcrumb links (most reliable)
-        val breadcrumbRegex = """<ul[^>]*class="[^"]*a-horizontal[^"]*"[^>]*>(.*?)</ul>"""
-            .toRegex(RegexOption.DOT_MATCHES_ALL)
-        for (match in breadcrumbRegex.findAll(html)) {
-            val linkRegex = """<a[^>]*>([^<]+)</a>""".toRegex()
-            val links = linkRegex.findAll(match.groupValues[1])
-                .map { it.groupValues[1].trim() }
-                .filter { link ->
-                    link.length > 2 &&
-                        !link.equals("Books", ignoreCase = true) &&
-                        !link.equals("Kindle Store", ignoreCase = true) &&
-                        !link.equals("Kindle eBooks", ignoreCase = true) &&
-                        !link.equals("See Top 100", ignoreCase = true) &&
-                        !link.contains("Amazon", ignoreCase = true) &&
-                        !link.startsWith(">")
-                }
-                .toList()
-            genres.addAll(links)
-        }
-
-        // Pattern 2: Best Sellers Rank category links "#N in Category"
-        val bsrRegex = """#\d+\s+in\s+<a[^>]*>([^<]+)</a>""".toRegex()
-        for (match in bsrRegex.findAll(html)) {
-            val cat = match.groupValues[1].trim()
-            if (cat.length > 2 && !cat.equals("Books", ignoreCase = true)) {
-                genres.add(cat)
-            }
-        }
-
-        // Pattern 3: Category tree links "in <a>Genre</a> > <a>Subgenre</a>"
-        val categoryRegex = """in\s+<a[^>]*>([^<]+)</a>\s*(?:>\s*<a[^>]*>([^<]+)</a>)*"""
-            .toRegex(RegexOption.IGNORE_CASE)
-        for (match in categoryRegex.findAll(html)) {
-            val cat = match.groupValues[1].trim()
-            if (cat.length > 2 && !cat.equals("Books", ignoreCase = true) &&
-                !cat.contains("Amazon", ignoreCase = true)) {
-                genres.add(cat)
-            }
-            val subCat = match.groupValues[2].trim()
-            if (subCat.isNotBlank() && subCat.length > 2) {
-                genres.add(subCat)
-            }
-        }
-
-        if (genres.isEmpty()) return null
-        val result = genres.take(10).joinToString(", ")
-        DebugLog.d(TAG, "Genres: $result")
-        return result
-    }
-
-    /**
-     * Extracts ISBN-10 from detail bullets or from the ASIN if it looks like an ISBN-10.
-     * Physical books use their ISBN-10 as the ASIN on Amazon.
-     */
-    private fun extractIsbn10(html: String, asin: String): String? {
-        // Detail bullet: "ISBN-10 : 1234567890"
+        // Detail bullet fallback
         val bullet = extractDetailBullet(html, "ISBN-10")
         if (bullet != null && bullet.matches(Regex("""\d{9}[\dXx]"""))) return bullet
 
-        // Product information table
+        // Table fallback
         val tableRegex = """<th[^>]*>\s*ISBN-10\s*</th>\s*<td[^>]*>\s*([^<]+)</td>"""
             .toRegex(RegexOption.IGNORE_CASE)
         val tableMatch = tableRegex.find(html)?.groupValues?.get(1)?.trim()
@@ -524,14 +643,18 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     /**
-     * Extracts the ASIN from the product page. For physical books this is often
-     * the ISBN-10, but for some editions it's a separate B-ASIN.
+     * Extracts the ASIN from the product page.
      */
     private fun extractAsin(html: String, fallbackAsin: String): String? {
         // Hidden input: <input type="hidden" name="ASIN" value="...">
         val inputRegex = """<input[^>]*name="ASIN"[^>]*value="([A-Z0-9]{10})"[^>]*/?>""".toRegex()
         val fromInput = inputRegex.find(html)?.groupValues?.get(1)
         if (fromInput != null) return fromInput
+
+        // cerberus-data-metrics div
+        val cerberusRegex = """id="cerberus-data-metrics"[^>]*data-asin="([A-Z0-9]{10})"[^>]*/?>""".toRegex()
+        val fromCerberus = cerberusRegex.find(html)?.groupValues?.get(1)
+        if (fromCerberus != null) return fromCerberus
 
         // Detail bullet: "ASIN : B0..."
         val bullet = extractDetailBullet(html, "ASIN")
@@ -542,19 +665,31 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     /**
-     * Extracts edition info from detail bullets or the title.
+     * Extracts edition info from details map, HTML, or title.
      * Examples: "1st Edition", "Deluxe Edition", "Revised & Updated"
      */
-    private fun extractEdition(html: String, title: String): String? {
-        // Detail bullet: "Edition : 1st"
+    private fun extractEdition(html: String, title: String, details: Map<String, String>): String? {
+        // Details map
+        val fromDetails = details.getByKeys("Edition")
+        if (fromDetails != null && fromDetails.length < 50) return fromDetails
+
+        // Detail bullet fallback
         val bullet = extractDetailBullet(html, "Edition")
         if (bullet != null && bullet.length < 50) return bullet
 
-        // Product information table
+        // Table fallback
         val tableRegex = """<th[^>]*>\s*Edition\s*</th>\s*<td[^>]*>\s*([^<]+)</td>"""
             .toRegex(RegexOption.IGNORE_CASE)
         val tableMatch = tableRegex.find(html)?.groupValues?.get(1)?.trim()
         if (tableMatch != null && tableMatch.length < 50) return tableMatch
+
+        // Publisher field sometimes contains edition: "Publisher; 1st edition (date)"
+        val publisherRaw = details.getByKeys("Publisher")
+        if (publisherRaw != null) {
+            val editionFromPublisher = Regex(""";\s*(.+?edition)""", RegexOption.IGNORE_CASE)
+                .find(publisherRaw)?.groupValues?.get(1)?.trim()
+            if (editionFromPublisher != null) return editionFromPublisher
+        }
 
         // Extract from title: "Book Title: Deluxe Edition"
         val editionRegex = """(?:(\d+(?:st|nd|rd|th)|Deluxe|Special|Collector['']?s?|Limited|Anniversary|Revised|Updated|Illustrated|Abridged|Unabridged|International|Student)\s+Edition)"""
@@ -565,7 +700,122 @@ class AmazonMetadataScraper @Inject constructor() {
         return null
     }
 
-    // --- Series extraction ---
+    // =====================================================================
+    // Genre/Category extraction - comprehensive
+    // =====================================================================
+
+    /**
+     * Extracts ALL genres/categories from every available source on the page:
+     * 1. Breadcrumbs (wayfinding-breadcrumbs section)
+     * 2. BSR subcategories (zg_hrsr_ladder spans - most comprehensive)
+     * 3. BSR inline "#N in Category" links
+     * 4. Legacy SalesRank section
+     * 5. Horizontal breadcrumb lists (a-horizontal class)
+     *
+     * Returns a comma-separated string of unique genres.
+     */
+    private fun extractAllGenres(html: String): String? {
+        val genres = mutableSetOf<String>()
+
+        // 1. Breadcrumbs from wayfinding-breadcrumbs section
+        val breadcrumbSection = extractHtmlSection(html, "wayfinding-breadcrumbs", 2000)
+        if (breadcrumbSection != null) {
+            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
+            for (match in linkRegex.findAll(breadcrumbSection)) {
+                val cat = match.groupValues[1].trim()
+                if (isValidGenre(cat)) genres.add(cat)
+            }
+        }
+
+        // 2. BSR subcategories using zg_hrsr_ladder spans (most comprehensive)
+        // Structure: <span class="zg_hrsr_ladder">in <a>Genre</a> > <a>Subgenre</a></span>
+        val bsrLadderRegex = """class="zg_hrsr_ladder"[^>]*>(.*?)</span>"""
+            .toRegex(RegexOption.DOT_MATCHES_ALL)
+        for (match in bsrLadderRegex.findAll(html)) {
+            val ladder = match.groupValues[1]
+            // Extract all linked categories within each ladder
+            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
+            for (linkMatch in linkRegex.findAll(ladder)) {
+                val cat = linkMatch.groupValues[1].trim()
+                if (isValidGenre(cat)) genres.add(cat)
+            }
+            // Also extract any unlinked category text between delimiters
+            val plainText = stripHtmlTags(ladder)
+            for (part in plainText.split(Regex("""[>›»]"""))) {
+                val cat = part
+                    .replace(Regex("""^(?:in\s+|&gt;\s*)""", RegexOption.IGNORE_CASE), "")
+                    .trim()
+                if (isValidGenre(cat)) genres.add(cat)
+            }
+        }
+
+        // 3. BSR inline "#N in <a>Category</a>" for pages without zg_hrsr
+        val bsrInlineRegex = """#[\d,]+\s+in\s+<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
+        for (match in bsrInlineRegex.findAll(html)) {
+            val cat = match.groupValues[1].trim()
+            if (isValidGenre(cat)) genres.add(cat)
+        }
+
+        // 4. Legacy SalesRank section (older Amazon layout)
+        val salesRankIndex = html.indexOf("id=\"SalesRank\"")
+        if (salesRankIndex >= 0) {
+            val salesSection = html.substring(salesRankIndex, (salesRankIndex + 3000).coerceAtMost(html.length))
+            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
+            for (match in linkRegex.findAll(salesSection)) {
+                val cat = match.groupValues[1].trim()
+                if (isValidGenre(cat)) genres.add(cat)
+            }
+        }
+
+        // 5. Horizontal breadcrumb links (a-horizontal class, used on some pages)
+        val breadcrumbListRegex = """<ul[^>]*class="[^"]*a-horizontal[^"]*"[^>]*>(.*?)</ul>"""
+            .toRegex(RegexOption.DOT_MATCHES_ALL)
+        for (match in breadcrumbListRegex.findAll(html)) {
+            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
+            for (linkMatch in linkRegex.findAll(match.groupValues[1])) {
+                val cat = linkMatch.groupValues[1].trim()
+                if (isValidGenre(cat)) genres.add(cat)
+            }
+        }
+
+        // 6. Category tree links pattern: "in <a>Genre</a> > <a>Subgenre</a>"
+        // (catches categories in BSR text that aren't in zg_hrsr_ladder spans)
+        val categoryTreeRegex = """in\s+<a[^>]*>([^<]+)</a>\s*(?:(?:&gt;|>|›)\s*<a[^>]*>([^<]+)</a>\s*)*"""
+            .toRegex(RegexOption.IGNORE_CASE)
+        for (match in categoryTreeRegex.findAll(html)) {
+            val cat = match.groupValues[1].trim()
+            if (isValidGenre(cat)) genres.add(cat)
+            // The second capture group only gets the last subcategory due to regex limitations
+            val subCat = match.groupValues[2].trim()
+            if (subCat.isNotBlank() && isValidGenre(subCat)) genres.add(subCat)
+        }
+
+        if (genres.isEmpty()) return null
+        val result = genres.take(15).joinToString(", ")
+        DebugLog.d(TAG, "Genres (${genres.size}): $result")
+        return result
+    }
+
+    /** Validates a genre/category name. Filters out generic labels and noise. */
+    private fun isValidGenre(text: String): Boolean {
+        val lower = text.lowercase().trim()
+        return text.length > 2 &&
+            lower != "books" &&
+            lower != "kindle store" &&
+            lower != "kindle ebooks" &&
+            lower != "audible books & originals" &&
+            !lower.startsWith("see top") &&
+            !lower.startsWith("see all") &&
+            !lower.contains("amazon") &&
+            !lower.startsWith(">") &&
+            !lower.startsWith("http") &&
+            !lower.matches(Regex("""#\d+.*""")) &&
+            !lower.matches(Regex("""\d+"""))
+    }
+
+    // =====================================================================
+    // Series extraction
+    // =====================================================================
 
     /**
      * Extracts series info from Amazon title tag parts.
@@ -723,7 +973,9 @@ class AmazonMetadataScraper @Inject constructor() {
         return null
     }
 
-    // --- Format detection ---
+    // =====================================================================
+    // Format detection
+    // =====================================================================
 
     private fun isEbook(html: String): Boolean {
         val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
@@ -780,7 +1032,9 @@ class AmazonMetadataScraper @Inject constructor() {
         }
     }
 
-    // --- Utility methods ---
+    // =====================================================================
+    // Utility methods
+    // =====================================================================
 
     private fun isValidTitle(text: String): Boolean {
         val lower = text.lowercase()
@@ -839,6 +1093,7 @@ class AmazonMetadataScraper @Inject constructor() {
             .replace(Regex("&gt;"), ">")
             .replace(Regex("&quot;"), "\"")
             .replace(Regex("&#39;"), "'")
+            .replace(Regex("&lrm;|&rlm;"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
