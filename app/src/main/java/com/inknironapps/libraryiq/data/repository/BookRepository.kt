@@ -242,6 +242,8 @@ class BookRepository @Inject constructor(
 
             // Fall back to search
             amazonScraper.lookupByIsbn(isbn)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // Don't swallow cancellation
         } catch (e: Exception) {
             DebugLog.e(TAG, "Amazon scraper error: ${e.message}")
             lastErrors.add("AMZ: ${e.javaClass.simpleName}: ${e.message}")
