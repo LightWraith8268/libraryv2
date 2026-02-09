@@ -424,7 +424,7 @@ class AmazonMetadataScraper @Inject constructor() {
             }
         }
 
-        // Pattern 2: "Part of: <a>Series Name</a> (N books)" or "Series: ..."
+        // Pattern 2: "Part of: <a>Series Name</a>" or "Series: <a>...</a>"
         val partOfRegex = """(?:Part of|Series):\s*<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
         val partOf = partOfRegex.find(html)?.groupValues?.get(1)?.trim()
         if (partOf != null) {
@@ -436,7 +436,6 @@ class AmazonMetadataScraper @Inject constructor() {
         // Pattern 3: Breadcrumb or detail bullets with series info
         val seriesBullet = extractDetailBullet(html, "Series")
         if (seriesBullet != null) {
-            // May be "The Maple Hills (Book 4)" or just "The Maple Hills"
             val numInBullet = """\((?:Book|Vol\.?|#)\s*(\d+)\)""".toRegex(RegexOption.IGNORE_CASE)
                 .find(seriesBullet)?.groupValues?.get(1)
             val name = seriesBullet.replace("""\s*\([^)]*\)""".toRegex(), "").trim()
@@ -446,29 +445,32 @@ class AmazonMetadataScraper @Inject constructor() {
             }
         }
 
-        // Pattern 4: "#N in <a>Series Name</a>" anywhere in the page
-        val hashInRegex = """#(\d+)\s+in\s+<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
-        hashInRegex.find(html)?.let {
+        // Pattern 4: "Book N of N: <a>Series Name</a>" or "Book N of N" near a series link
+        // This is the inline series format without an id="seriesTitle" wrapper
+        val bookOfLinkRegex = """Book\s+(\d+)\s+of\s+\d+\s*:?\s*<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
+        bookOfLinkRegex.find(html)?.let {
             val num = it.groupValues[1]
             val name = it.groupValues[2].trim()
-            DebugLog.d(TAG, "Series from #N-in pattern: '$name' #$num")
+            DebugLog.d(TAG, "Series from 'Book N of M: Link': '$name' #$num")
             return Pair(name, num)
         }
 
         // Pattern 5: If we know the series name, look for "Book N" near it in HTML
         if (knownSeriesName != null) {
-            // Search for series name in HTML, then look for "Book N" within 300 chars
-            val nameIndex = html.indexOf(knownSeriesName, ignoreCase = true)
-            if (nameIndex >= 0) {
-                // Look in a window around the series name mention
-                val start = (nameIndex - 200).coerceAtLeast(0)
-                val end = (nameIndex + knownSeriesName.length + 200).coerceAtMost(html.length)
+            // Search ALL occurrences of the series name, check each for nearby book number
+            var searchFrom = 0
+            while (searchFrom < html.length) {
+                val nameIndex = html.indexOf(knownSeriesName, searchFrom, ignoreCase = true)
+                if (nameIndex < 0) break
+                val start = (nameIndex - 300).coerceAtLeast(0)
+                val end = (nameIndex + knownSeriesName.length + 300).coerceAtMost(html.length)
                 val window = html.substring(start, end)
                 val num = bookNumRegex.find(window)?.groupValues?.get(1)
                 if (num != null) {
                     DebugLog.d(TAG, "Series number from near '$knownSeriesName': #$num")
                     return Pair(knownSeriesName, num)
                 }
+                searchFrom = nameIndex + knownSeriesName.length
             }
         }
 
