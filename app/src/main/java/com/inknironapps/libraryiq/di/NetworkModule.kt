@@ -3,6 +3,7 @@ package com.inknironapps.libraryiq.di
 import com.inknironapps.libraryiq.BuildConfig
 import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.HardcoverApiService
+import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.util.DebugLog
 import dagger.Module
@@ -83,6 +84,16 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @Named("itunes")
+    fun provideITunesRetrofit(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(ITunesApiService.BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
     fun provideBookApiService(@Named("googleBooks") retrofit: Retrofit): BookApiService {
         return retrofit.create(BookApiService::class.java)
     }
@@ -97,5 +108,11 @@ object NetworkModule {
     @Singleton
     fun provideHardcoverApiService(@Named("hardcover") retrofit: Retrofit): HardcoverApiService {
         return retrofit.create(HardcoverApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideITunesApiService(@Named("itunes") retrofit: Retrofit): ITunesApiService {
+        return retrofit.create(ITunesApiService::class.java)
     }
 }

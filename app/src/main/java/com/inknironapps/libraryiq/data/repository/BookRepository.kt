@@ -11,9 +11,12 @@ import com.inknironapps.libraryiq.data.remote.FirestoreSync
 import com.inknironapps.libraryiq.data.remote.GoogleBookItem
 import com.inknironapps.libraryiq.data.remote.HardcoverApiService
 import com.inknironapps.libraryiq.data.remote.HardcoverEdition
+import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
 import com.inknironapps.libraryiq.util.DebugLog
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,6 +26,11 @@ data class LookupResult(
     val diagnostics: String
 )
 
+data class CoverOption(
+    val source: String,
+    val url: String
+)
+
 @Singleton
 class BookRepository @Inject constructor(
     private val bookDao: BookDao,
@@ -30,6 +38,7 @@ class BookRepository @Inject constructor(
     private val openLibraryApiService: OpenLibraryApiService,
     private val hardcoverApiService: HardcoverApiService,
     private val amazonScraper: AmazonMetadataScraper,
+    private val iTunesApiService: ITunesApiService,
     private val firestoreSync: FirestoreSync
 ) {
     fun getAllBooks(): Flow<List<Book>> = bookDao.getAllBooks()
@@ -403,6 +412,151 @@ class BookRepository @Inject constructor(
         val check = (11 - (sum % 11)) % 11
         val checkChar = if (check == 10) "X" else check.toString()
         return body + checkChar
+    }
+
+    // =====================================================================
+    // Cover Picker - fetch covers from all sources
+    // =====================================================================
+
+    /**
+     * Fetches cover image URLs from all available sources for the cover picker.
+     * Queries Google Books, Open Library, Hardcover, Amazon, and iTunes in parallel.
+     */
+    suspend fun fetchAllCovers(isbn: String?, title: String, author: String): List<CoverOption> {
+        val covers = mutableListOf<CoverOption>()
+
+        coroutineScope {
+            val jobs = mutableListOf<kotlinx.coroutines.Deferred<List<CoverOption>>>()
+
+            // Open Library - direct ISBN cover URL (no API call needed)
+            if (!isbn.isNullOrBlank()) {
+                covers.add(CoverOption(
+                    "Open Library",
+                    "https://covers.openlibrary.org/b/isbn/$isbn-L.jpg"
+                ))
+            }
+
+            // Google Books
+            jobs.add(async { fetchGoogleBooksCovers(isbn, title, author) })
+
+            // Hardcover
+            if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
+                jobs.add(async { fetchHardcoverCovers(isbn, title) })
+            }
+
+            // Amazon (scrapes product page for high-res image)
+            if (!isbn.isNullOrBlank()) {
+                jobs.add(async { fetchAmazonCovers(isbn) })
+            }
+
+            // iTunes (Apple Books covers)
+            jobs.add(async { fetchITunesCovers(title, author) })
+
+            for (job in jobs) {
+                try {
+                    covers.addAll(job.await())
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "Cover fetch error: ${e.message}")
+                }
+            }
+        }
+
+        // Remove duplicates by URL and filter empty/blank
+        return covers
+            .filter { it.url.isNotBlank() && it.url.startsWith("http") }
+            .distinctBy { it.url }
+    }
+
+    private suspend fun fetchGoogleBooksCovers(isbn: String?, title: String, author: String): List<CoverOption> {
+        val results = mutableListOf<CoverOption>()
+        try {
+            // Try ISBN search first
+            if (!isbn.isNullOrBlank()) {
+                val response = bookApiService.searchByIsbn("isbn:$isbn")
+                response.items?.forEach { item ->
+                    item.volumeInfo.imageLinks?.getBestUrl()?.let { url ->
+                        results.add(CoverOption("Google Books", url))
+                    }
+                }
+            }
+            // Also try title+author search for alternate editions
+            if (results.isEmpty()) {
+                val query = if (author != "Unknown Author") "intitle:$title+inauthor:$author" else "intitle:$title"
+                val response = bookApiService.searchByIsbn(query)
+                response.items?.take(3)?.forEach { item ->
+                    item.volumeInfo.imageLinks?.getBestUrl()?.let { url ->
+                        results.add(CoverOption("Google Books", url))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Google Books covers error: ${e.message}")
+        }
+        return results
+    }
+
+    private suspend fun fetchHardcoverCovers(isbn: String?, title: String): List<CoverOption> {
+        val results = mutableListOf<CoverOption>()
+        try {
+            // Try ISBN lookup
+            if (!isbn.isNullOrBlank()) {
+                val response = hardcoverApiService.query(HardcoverApiService.buildIsbnQuery(isbn))
+                response.data?.editions?.forEach { edition ->
+                    edition.image?.url?.let { url ->
+                        results.add(CoverOption("Hardcover", url))
+                    }
+                }
+            }
+            // Try title lookup if ISBN didn't work
+            if (results.isEmpty()) {
+                val response = hardcoverApiService.query(HardcoverApiService.buildTitleQuery(title))
+                response.data?.editions?.take(3)?.forEach { edition ->
+                    edition.image?.url?.let { url ->
+                        results.add(CoverOption("Hardcover", url))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Hardcover covers error: ${e.message}")
+        }
+        return results
+    }
+
+    private suspend fun fetchAmazonCovers(isbn: String): List<CoverOption> {
+        val results = mutableListOf<CoverOption>()
+        try {
+            val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) {
+                convertIsbn13ToIsbn10(isbn)
+            } else isbn
+
+            val book = isbn10?.let { amazonScraper.lookupByProductPage(it) }
+                ?: amazonScraper.lookupByIsbn(isbn)
+
+            book?.coverUrl?.let { url ->
+                results.add(CoverOption("Amazon", url))
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Amazon covers error: ${e.message}")
+        }
+        return results
+    }
+
+    private suspend fun fetchITunesCovers(title: String, author: String): List<CoverOption> {
+        val results = mutableListOf<CoverOption>()
+        try {
+            val searchTerm = if (author != "Unknown Author") "$title $author" else title
+            val response = iTunesApiService.searchEbooks(searchTerm)
+            response.results?.take(3)?.forEach { result ->
+                result.getHighResCoverUrl()?.let { url ->
+                    results.add(CoverOption("Apple Books", url))
+                }
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "iTunes covers error: ${e.message}")
+        }
+        return results
     }
 
     companion object {

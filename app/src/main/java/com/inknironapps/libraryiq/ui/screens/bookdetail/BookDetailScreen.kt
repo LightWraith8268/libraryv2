@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.StarHalf
@@ -55,12 +56,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
+import com.inknironapps.libraryiq.ui.components.CoverPickerDialog
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
 import com.inknironapps.libraryiq.ui.navigation.Screen
 import java.text.SimpleDateFormat
@@ -145,12 +148,44 @@ fun BookDetailScreen(
                     if (!book.coverUrl.isNullOrBlank()) {
                         AsyncImage(
                             model = book.coverUrl,
-                            contentDescription = "Cover",
+                            contentDescription = "Cover - tap to change",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(width = 120.dp, height = 180.dp)
                                 .clip(MaterialTheme.shapes.medium)
+                                .clickable { viewModel.openCoverPicker() }
                         )
+                        Spacer(modifier = Modifier.width(16.dp))
+                    } else {
+                        // Placeholder: tap to search for covers
+                        Card(
+                            modifier = Modifier
+                                .size(width = 120.dp, height = 180.dp)
+                                .clickable { viewModel.openCoverPicker() },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Image,
+                                    contentDescription = "Add cover",
+                                    modifier = Modifier.size(32.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Tap to find\na cover",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(16.dp))
                     }
 
@@ -574,6 +609,17 @@ fun BookDetailScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    // Cover picker dialog
+    if (uiState.showCoverPicker) {
+        CoverPickerDialog(
+            covers = uiState.coverOptions,
+            isLoading = uiState.isFetchingCovers,
+            currentCoverUrl = book?.coverUrl,
+            onCoverSelected = { url -> viewModel.selectCover(url) },
+            onDismiss = { viewModel.closeCoverPicker() }
         )
     }
 
