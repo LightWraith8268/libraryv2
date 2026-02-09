@@ -156,6 +156,12 @@ class AmazonMetadataScraper @Inject constructor() {
     // --- Product Page Parsing ---
 
     private fun parseProductPage(html: String, isbn: String): Book? {
+        // Skip eBooks / Kindle editions - only want physical books
+        if (isEbook(html)) {
+            DebugLog.d(TAG, "Skipping eBook/Kindle edition")
+            return null
+        }
+
         // Most reliable: parse <title> tag
         // Format: "Book Title: Author Last, First: 9781234567890: Amazon.com: Books"
         val titleTagResult = parseHtmlTitleTag(html)
@@ -188,9 +194,11 @@ class AmazonMetadataScraper @Inject constructor() {
             ?: htmlSeries?.second
         val seriesInfo = if (seriesName != null) Pair(seriesName, seriesNumber) else null
 
+        val format = extractFormat(html)
+
         DebugLog.d(TAG, "Product page: '$title' by '$author', " +
             "image=${imageUrl != null}, pages=$pages, publisher=$publisher, " +
-            "series=${seriesInfo?.first} #${seriesInfo?.second}")
+            "format=$format, series=${seriesInfo?.first} #${seriesInfo?.second}")
 
         return Book(
             title = cleanTitle(title),
@@ -201,6 +209,7 @@ class AmazonMetadataScraper @Inject constructor() {
             pageCount = pages,
             publisher = publisher,
             publishedDate = pubDate,
+            format = format,
             series = seriesInfo?.first,
             seriesNumber = seriesInfo?.second
         )
@@ -504,6 +513,79 @@ class AmazonMetadataScraper @Inject constructor() {
         }
 
         return null
+    }
+
+    // --- Format detection ---
+
+    /**
+     * Detects if the product page is for an eBook/Kindle edition.
+     * Checks title tag, binding/format info, and detail bullets.
+     */
+    private fun isEbook(html: String): Boolean {
+        // Check the <title> tag for Kindle/eBook indicators
+        val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
+        val rawTitle = titleRegex.find(html)?.groupValues?.get(1) ?: ""
+        val titleLower = rawTitle.lowercase()
+        if (titleLower.contains("kindle") || titleLower.contains("ebook")) return true
+
+        // Check for Kindle-specific selectors/elements
+        if (html.contains("kindle-price", ignoreCase = true)) return true
+        if (html.contains("a]Kindle", ignoreCase = true)) return true
+
+        // Check selected format tab - Amazon highlights the active format
+        // e.g., <span class="a-button-selected">...<span>Kindle</span>...</span>
+        val selectedFormatRegex = """class="a-button-selected"[^>]*>.*?<span[^>]*>([^<]+)</span>"""
+            .toRegex(RegexOption.DOT_MATCHES_ALL)
+        val selectedFormat = selectedFormatRegex.find(html)?.groupValues?.get(1)?.trim()?.lowercase()
+        if (selectedFormat != null && (selectedFormat.contains("kindle") || selectedFormat.contains("ebook"))) return true
+
+        // Check binding/format detail bullet
+        val binding = extractDetailBullet(html, "Binding")
+            ?: extractDetailBullet(html, "Format")
+        if (binding != null) {
+            val bindingLower = binding.lowercase()
+            if (bindingLower.contains("kindle") || bindingLower.contains("ebook")) return true
+        }
+
+        // Check ASIN format - Kindle ASINs start with "B" while physical books use ISBN-10
+        val asinRegex = """<input[^>]*name="ASIN"[^>]*value="(B[A-Z0-9]{9})"[^>]*/?>""".toRegex()
+        val kindleAsinInTitle = rawTitle.contains("Kindle Edition", ignoreCase = true)
+        if (asinRegex.find(html) != null && !html.contains("pages", ignoreCase = true)) return true
+
+        return kindleAsinInTitle
+    }
+
+    /**
+     * Extracts the physical format from the product page (Hardcover, Paperback, etc.)
+     */
+    private fun extractFormat(html: String): String? {
+        // Check selected format button
+        val selectedFormatRegex = """class="a-button-selected"[^>]*>.*?<span[^>]*>([^<]+)</span>"""
+            .toRegex(RegexOption.DOT_MATCHES_ALL)
+        val selected = selectedFormatRegex.find(html)?.groupValues?.get(1)?.trim()
+        if (selected != null && selected.lowercase().let {
+            it.contains("hardcover") || it.contains("paperback") ||
+                it.contains("mass market") || it.contains("board book") ||
+                it.contains("library binding") || it.contains("spiral")
+        }) return selected
+
+        // Check binding detail bullet
+        val binding = extractDetailBullet(html, "Binding")
+            ?: extractDetailBullet(html, "Format")
+        if (binding != null && !binding.lowercase().let {
+            it.contains("kindle") || it.contains("ebook")
+        }) return binding
+
+        // Check title tag for format
+        val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
+        val title = titleRegex.find(html)?.groupValues?.get(1)?.lowercase() ?: ""
+        return when {
+            title.contains("hardcover") -> "Hardcover"
+            title.contains("paperback") -> "Paperback"
+            title.contains("mass market") -> "Mass Market Paperback"
+            title.contains("board book") -> "Board Book"
+            else -> null
+        }
     }
 
     // --- Utility methods ---
