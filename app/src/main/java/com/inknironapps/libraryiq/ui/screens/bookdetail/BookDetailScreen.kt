@@ -62,6 +62,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
+import com.inknironapps.libraryiq.ui.navigation.Screen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -176,7 +177,12 @@ fun BookDetailScreen(
                             Text(
                                 text = book.author,
                                 style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable {
+                                    navController.navigate(
+                                        Screen.Library.createRoute(filterAuthor = book.author)
+                                    )
+                                }
                             )
 
                             // Series info
@@ -190,7 +196,12 @@ fun BookDetailScreen(
                                         }
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.clickable {
+                                        navController.navigate(
+                                            Screen.Library.createRoute(filterSeries = book.series)
+                                        )
+                                    }
                                 )
                             }
                         }
@@ -314,15 +325,31 @@ fun BookDetailScreen(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        MetadataRow("Author", book.author)
+                        ClickableMetadataRow(
+                            label = "Author",
+                            value = book.author,
+                            onClick = {
+                                navController.navigate(
+                                    Screen.Library.createRoute(filterAuthor = book.author)
+                                )
+                            }
+                        )
 
                         if (!book.series.isNullOrBlank()) {
-                            MetadataRow("Series", buildString {
-                                append(book.series)
-                                if (!book.seriesNumber.isNullOrBlank()) {
-                                    append(" #${book.seriesNumber}")
+                            ClickableMetadataRow(
+                                label = "Series",
+                                value = buildString {
+                                    append(book.series)
+                                    if (!book.seriesNumber.isNullOrBlank()) {
+                                        append(" #${book.seriesNumber}")
+                                    }
+                                },
+                                onClick = {
+                                    navController.navigate(
+                                        Screen.Library.createRoute(filterSeries = book.series)
+                                    )
                                 }
-                            })
+                            )
                         }
 
                         book.publisher?.let { MetadataRow("Publisher", it) }
@@ -635,6 +662,27 @@ private fun MetadataRow(label: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun ClickableMetadataRow(label: String, value: String, onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(90.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
         )
     }
 }
