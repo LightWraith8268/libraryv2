@@ -411,8 +411,27 @@ class AmazonMetadataScraper @Inject constructor() {
     private fun extractSeriesFromHtml(html: String, knownSeriesName: String? = null): Pair<String, String?>? {
         val bookNumRegex = """(?:Book|Volume|Part)\s+(\d+)""".toRegex(RegexOption.IGNORE_CASE)
 
-        // Pattern 1: seriesTitle section (common on Amazon book pages)
-        // e.g., <div id="seriesTitle">Book 4 of 5: <a href="...">The Maple Hills</a></div>
+        // Pattern 0: JSON-LD structured data (most reliable when present)
+        // Look for "isPartOf" with BookSeries, or "position" in series context
+        val jsonLdRegex = """<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        for (match in jsonLdRegex.findAll(html)) {
+            val json = match.groupValues[1]
+            // Series name from isPartOf
+            val seriesNameJson = """"name"\s*:\s*"([^"]+)"""".toRegex()
+            val isPartOf = json.indexOf("isPartOf")
+            if (isPartOf >= 0) {
+                val partOfSection = json.substring(isPartOf).take(500)
+                val name = seriesNameJson.find(partOfSection)?.groupValues?.get(1)
+                val pos = """"position"\s*:\s*"?(\d+)"?""".toRegex().find(partOfSection)?.groupValues?.get(1)
+                    ?: """"position"\s*:\s*"?(\d+)"?""".toRegex().find(json)?.groupValues?.get(1)
+                if (name != null) {
+                    DebugLog.d(TAG, "Series from JSON-LD: '$name' #$pos")
+                    return Pair(name, pos)
+                }
+            }
+        }
+
+        // Pattern 1: seriesTitle section
         val seriesSection = html.substringAfter("seriesTitle", "").take(500)
         if (seriesSection.isNotEmpty()) {
             val seriesLinkRegex = """<a[^>]*>([^<]+)</a>""".toRegex()
@@ -433,7 +452,7 @@ class AmazonMetadataScraper @Inject constructor() {
             return Pair(partOf, num)
         }
 
-        // Pattern 3: Breadcrumb or detail bullets with series info
+        // Pattern 3: Detail bullets with series info
         val seriesBullet = extractDetailBullet(html, "Series")
         if (seriesBullet != null) {
             val numInBullet = """\((?:Book|Vol\.?|#)\s*(\d+)\)""".toRegex(RegexOption.IGNORE_CASE)
@@ -445,8 +464,7 @@ class AmazonMetadataScraper @Inject constructor() {
             }
         }
 
-        // Pattern 4: "Book N of N: <a>Series Name</a>" or "Book N of N" near a series link
-        // This is the inline series format without an id="seriesTitle" wrapper
+        // Pattern 4: "Book N of N: <a>Series Name</a>" inline format
         val bookOfLinkRegex = """Book\s+(\d+)\s+of\s+\d+\s*:?\s*<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
         bookOfLinkRegex.find(html)?.let {
             val num = it.groupValues[1]
@@ -455,22 +473,33 @@ class AmazonMetadataScraper @Inject constructor() {
             return Pair(name, num)
         }
 
-        // Pattern 5: If we know the series name, look for "Book N" near it in HTML
+        // Pattern 5: If we know the series name, log context and search for "Book N" nearby
         if (knownSeriesName != null) {
-            // Search ALL occurrences of the series name, check each for nearby book number
             var searchFrom = 0
+            var occurrence = 0
             while (searchFrom < html.length) {
                 val nameIndex = html.indexOf(knownSeriesName, searchFrom, ignoreCase = true)
                 if (nameIndex < 0) break
+                occurrence++
                 val start = (nameIndex - 300).coerceAtLeast(0)
                 val end = (nameIndex + knownSeriesName.length + 300).coerceAtMost(html.length)
                 val window = html.substring(start, end)
+                // Log first 3 occurrences to see what's nearby
+                if (occurrence <= 3) {
+                    val stripped = stripHtmlTags(window).replace(Regex("\\s+"), " ").take(200)
+                    DebugLog.d(TAG, "Series context #$occurrence: $stripped")
+                }
                 val num = bookNumRegex.find(window)?.groupValues?.get(1)
                 if (num != null) {
                     DebugLog.d(TAG, "Series number from near '$knownSeriesName': #$num")
                     return Pair(knownSeriesName, num)
                 }
                 searchFrom = nameIndex + knownSeriesName.length
+            }
+            if (occurrence == 0) {
+                DebugLog.d(TAG, "Series name '$knownSeriesName' not found in HTML")
+            } else {
+                DebugLog.d(TAG, "Found '$knownSeriesName' $occurrence time(s) but no book number nearby")
             }
         }
 

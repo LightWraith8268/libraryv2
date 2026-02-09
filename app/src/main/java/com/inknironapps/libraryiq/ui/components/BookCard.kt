@@ -78,6 +78,22 @@ fun BookCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                if (book.series != null) {
+                    val seriesText = buildString {
+                        append(book.series)
+                        if (book.seriesNumber != null) {
+                            append(" #${book.seriesNumber}")
+                        }
+                    }
+                    Text(
+                        text = seriesText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(4.dp))
 
                 val statusColor = when (book.readingStatus) {
