@@ -29,8 +29,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -41,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -76,6 +73,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.inknironapps.libraryiq.data.local.entity.Book
+import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
+import com.inknironapps.libraryiq.ui.components.displayName
 import com.inknironapps.libraryiq.ui.navigation.Screen
 
 private val WheelColors = listOf(
@@ -103,7 +102,6 @@ fun SpinnerScreen(
     val rotation = remember { Animatable(0f) }
     var lastBaseRotation by remember { mutableFloatStateOf(0f) }
 
-    // Spin animation
     LaunchedEffect(state.spinTrigger) {
         if (state.spinTrigger > 0 && state.isSpinning) {
             val target = lastBaseRotation + state.targetRotation
@@ -155,7 +153,7 @@ fun SpinnerScreen(
         ) {
             if (state.wheelBooks.isEmpty()) {
                 EmptySpinnerState(
-                    filterMode = state.filterMode,
+                    state = state,
                     onOpenSettings = { viewModel.toggleSettings() }
                 )
             } else {
@@ -165,7 +163,6 @@ fun SpinnerScreen(
                 ) {
                     Spacer(modifier = Modifier.weight(0.1f))
 
-                    // Wheel with pointer
                     Box(
                         contentAlignment = Alignment.TopCenter,
                         modifier = Modifier.padding(horizontal = 24.dp)
@@ -175,7 +172,6 @@ fun SpinnerScreen(
                             rotationDegrees = rotation.value,
                             modifier = Modifier.size(300.dp)
                         )
-                        // Pointer triangle
                         Canvas(modifier = Modifier.size(24.dp)) {
                             val path = Path().apply {
                                 moveTo(size.width / 2f, size.height)
@@ -189,7 +185,6 @@ fun SpinnerScreen(
 
                     Spacer(modifier = Modifier.weight(0.1f))
 
-                    // Spin button
                     Button(
                         onClick = { viewModel.spin() },
                         enabled = !state.isSpinning && state.eligibleCount >= 1,
@@ -218,15 +213,15 @@ fun SpinnerScreen(
             }
         }
 
-        // Result dialog
         if (state.showResult && state.selectedBook != null) {
             SpinResultDialog(
                 book = state.selectedBook!!,
-                autoMarkedReading = state.autoMarkReading,
-                onDismiss = { viewModel.dismissResult() },
+                autoMarkReading = state.autoMarkReading,
+                onAccept = { viewModel.acceptResult() },
                 onViewDetails = {
-                    viewModel.dismissResult()
-                    navController.navigate(Screen.BookDetail.createRoute(state.selectedBook!!.id))
+                    val bookId = state.selectedBook!!.id
+                    viewModel.acceptResult()
+                    navController.navigate(Screen.BookDetail.createRoute(bookId))
                 },
                 onSpinAgain = {
                     viewModel.dismissResult()
@@ -235,12 +230,12 @@ fun SpinnerScreen(
             )
         }
 
-        // Settings bottom sheet
         if (state.showSettings) {
             SpinnerSettingsSheet(
                 state = state,
                 onDismiss = { viewModel.toggleSettings() },
-                onFilterModeChange = { viewModel.setFilterMode(it) },
+                onToggleStatus = { viewModel.toggleStatusFilter(it) },
+                onManualModeChange = { viewModel.setManualMode(it) },
                 onAutoMarkReadingChange = { viewModel.setAutoMarkReading(it) },
                 onAutoRemoveChange = { viewModel.setAutoRemove(it) },
                 onManageBooks = { viewModel.showBookSelector() },
@@ -248,7 +243,6 @@ fun SpinnerScreen(
             )
         }
 
-        // Book selector
         if (state.showBookSelector) {
             BookSelectorDialog(
                 allBooks = state.allBooks,
@@ -267,20 +261,25 @@ private fun SpinnerWheel(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    val textSizePx = with(density) { 12.sp.toPx() }
+    val baseTextSizePx = with(density) { 12.sp.toPx() }
 
     Canvas(modifier = modifier) {
         val radius = size.minDimension / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
         val segmentAngle = 360f / books.size
 
-        // Draw segments with rotation
+        val textSizePx = when {
+            books.size <= 8 -> baseTextSizePx
+            books.size <= 12 -> baseTextSizePx * 0.85f
+            books.size <= 16 -> baseTextSizePx * 0.72f
+            else -> baseTextSizePx * 0.6f
+        }
+
         rotate(degrees = rotationDegrees, pivot = center) {
             books.forEachIndexed { index, book ->
                 val startAngle = index * segmentAngle - 90f
                 val color = WheelColors[index % WheelColors.size]
 
-                // Draw segment arc
                 drawArc(
                     color = color,
                     startAngle = startAngle,
@@ -290,7 +289,6 @@ private fun SpinnerWheel(
                     size = Size(radius * 2, radius * 2)
                 )
 
-                // Draw segment border
                 drawArc(
                     color = Color.White.copy(alpha = 0.3f),
                     startAngle = startAngle,
@@ -301,9 +299,8 @@ private fun SpinnerWheel(
                     style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
                 )
 
-                // Draw book title text
                 drawSegmentText(
-                    text = book.title.take(18),
+                    text = book.title,
                     centerX = center.x,
                     centerY = center.y,
                     radius = radius,
@@ -313,7 +310,6 @@ private fun SpinnerWheel(
                 )
             }
 
-            // Center circle
             drawCircle(
                 color = Color.White,
                 radius = radius * 0.12f,
@@ -345,16 +341,19 @@ private fun DrawScope.drawSegmentText(
         setShadowLayer(2f, 1f, 1f, android.graphics.Color.argb(128, 0, 0, 0))
     }
 
-    // For narrow segments, use shorter text
-    val displayText = if (segmentAngle < 30f) text.take(10) else text
-    val maxChars = if (segmentAngle < 20f) 6 else if (segmentAngle < 36f) 12 else 18
-    val truncated = if (displayText.length > maxChars) displayText.take(maxChars - 1) + "\u2026" else displayText
+    val maxChars = when {
+        segmentAngle < 15f -> 5
+        segmentAngle < 20f -> 8
+        segmentAngle < 30f -> 12
+        segmentAngle < 45f -> 16
+        else -> 20
+    }
+    val truncated = if (text.length > maxChars) text.take(maxChars - 1) + "\u2026" else text
 
     drawContext.canvas.nativeCanvas.save()
     drawContext.canvas.nativeCanvas.translate(centerX, centerY)
     drawContext.canvas.nativeCanvas.rotate(angle + 90f)
 
-    // Draw text along the radius, offset from center
     val textWidth = paint.measureText(truncated)
     val xOffset = radius * 0.25f
     val maxTextWidth = radius * 0.65f
@@ -374,7 +373,7 @@ private fun DrawScope.drawSegmentText(
 
 @Composable
 private fun EmptySpinnerState(
-    filterMode: SpinnerFilterMode,
+    state: SpinnerUiState,
     onOpenSettings: () -> Unit
 ) {
     Column(
@@ -398,12 +397,12 @@ private fun EmptySpinnerState(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = when (filterMode) {
-                SpinnerFilterMode.UNREAD_ONLY -> "You have no unread books. Change the filter or add books to your library."
-                SpinnerFilterMode.WANT_TO_READ -> "You have no 'Want to Read' books. Change the filter or update book statuses."
-                SpinnerFilterMode.UNREAD_AND_WANT -> "You have no unread or 'Want to Read' books."
-                SpinnerFilterMode.ALL_BOOKS -> "Your library is empty. Add some books first!"
-                SpinnerFilterMode.MANUAL -> "No books selected. Tap settings to manually pick books for the spinner."
+            text = if (state.manualMode) {
+                "No books selected. Tap settings to manually pick books for the spinner."
+            } else if (state.statusFilters.isEmpty()) {
+                "Your library is empty. Add some books first!"
+            } else {
+                "No books match the selected filters. Change the filters or add more books."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
@@ -421,13 +420,13 @@ private fun EmptySpinnerState(
 @Composable
 private fun SpinResultDialog(
     book: Book,
-    autoMarkedReading: Boolean,
-    onDismiss: () -> Unit,
+    autoMarkReading: Boolean,
+    onAccept: () -> Unit,
     onViewDetails: () -> Unit,
     onSpinAgain: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onAccept,
         title = {
             Text(
                 text = "Your next read!",
@@ -481,10 +480,10 @@ private fun SpinResultDialog(
                     )
                 }
 
-                if (autoMarkedReading) {
+                if (autoMarkReading) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Marked as Reading",
+                        text = "Will be marked as Reading",
                         style = MaterialTheme.typography.labelMedium,
                         color = Color(0xFF4CAF50)
                     )
@@ -498,8 +497,8 @@ private fun SpinResultDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onDismiss) {
-                    Text("Close")
+                TextButton(onClick = onAccept) {
+                    Text("OK")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 OutlinedButton(onClick = onSpinAgain) {
@@ -521,7 +520,8 @@ private fun SpinResultDialog(
 private fun SpinnerSettingsSheet(
     state: SpinnerUiState,
     onDismiss: () -> Unit,
-    onFilterModeChange: (SpinnerFilterMode) -> Unit,
+    onToggleStatus: (ReadingStatus) -> Unit,
+    onManualModeChange: (Boolean) -> Unit,
     onAutoMarkReadingChange: (Boolean) -> Unit,
     onAutoRemoveChange: (Boolean) -> Unit,
     onManageBooks: () -> Unit,
@@ -542,36 +542,74 @@ private fun SpinnerSettingsSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            // Filter mode
+            // Status filters
             Text(
-                text = "Books to Include",
+                text = "Filter by Reading Status",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary
             )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (state.statusFilters.isEmpty()) "No filters = all books"
+                else "Select one or more statuses",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(modifier = Modifier.height(8.dp))
 
-            SpinnerFilterMode.entries.forEach { mode ->
+            ReadingStatus.entries.forEach { status ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onFilterModeChange(mode) }
-                        .padding(vertical = 6.dp)
+                        .clickable(enabled = !state.manualMode) {
+                            onToggleStatus(status)
+                        }
+                        .padding(vertical = 4.dp)
                 ) {
-                    RadioButton(
-                        selected = state.filterMode == mode,
-                        onClick = { onFilterModeChange(mode) }
+                    Checkbox(
+                        checked = status in state.statusFilters,
+                        onCheckedChange = { onToggleStatus(status) },
+                        enabled = !state.manualMode
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = mode.displayName,
-                        style = MaterialTheme.typography.bodyLarge
+                        text = status.displayName(),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (state.manualMode)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            // Manual selection button
-            if (state.filterMode == SpinnerFilterMode.MANUAL) {
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+            // Manual mode
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Manual Selection",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "Hand-pick specific books instead of filtering by status",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = state.manualMode,
+                    onCheckedChange = onManualModeChange
+                )
+            }
+
+            if (state.manualMode) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onManageBooks,
@@ -581,11 +619,11 @@ private fun SpinnerSettingsSheet(
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
             // Behavior settings
             Text(
-                text = "When Spinner Lands",
+                text = "When You Accept a Spin",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -637,9 +675,8 @@ private fun SpinnerSettingsSheet(
                 )
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // Reset excluded books
             OutlinedButton(
                 onClick = onResetExcluded,
                 modifier = Modifier.fillMaxWidth()
@@ -654,7 +691,6 @@ private fun SpinnerSettingsSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BookSelectorDialog(
     allBooks: List<Book>,
