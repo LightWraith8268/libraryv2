@@ -39,6 +39,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
+        env:
+          HARDCOVER_API_TOKEN: ${{ secrets.HARDCOVER_API_TOKEN }}
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Upload debug APK
@@ -88,6 +90,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          HARDCOVER_API_TOKEN: ${{ secrets.HARDCOVER_API_TOKEN }}
         run: ./gradlew bundleRelease --no-daemon
 
       - name: Upload release AAB
@@ -102,6 +105,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          HARDCOVER_API_TOKEN: ${{ secrets.HARDCOVER_API_TOKEN }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload release APK

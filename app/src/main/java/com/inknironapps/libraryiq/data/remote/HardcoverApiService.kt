@@ -32,6 +32,12 @@ interface HardcoverApiService {
                                     name
                                 }
                             }
+                            book_series {
+                                series {
+                                    name
+                                }
+                                position
+                            }
                         }
                         publisher {
                             name
@@ -42,6 +48,42 @@ interface HardcoverApiService {
             return GraphQLRequest(
                 query = query,
                 variables = mapOf("isbn" to isbn)
+            )
+        }
+
+        fun buildTitleQuery(title: String): GraphQLRequest {
+            val query = """
+                query BookByTitle(${'$'}title: String!) {
+                    books(where: {title: {_ilike: ${'$'}title}}, limit: 3) {
+                        title
+                        description
+                        contributions(limit: 5) {
+                            author {
+                                name
+                            }
+                        }
+                        book_series {
+                            series {
+                                name
+                            }
+                            position
+                        }
+                        editions(limit: 1, order_by: {release_date: desc}) {
+                            pages
+                            image {
+                                url
+                            }
+                            publisher {
+                                name
+                            }
+                            release_date
+                        }
+                    }
+                }
+            """.trimIndent()
+            return GraphQLRequest(
+                query = query,
+                variables = mapOf("title" to "%$title%")
             )
         }
     }
@@ -57,7 +99,23 @@ data class HardcoverResponse(
 )
 
 data class HardcoverData(
-    @SerializedName("editions") val editions: List<HardcoverEdition>?
+    @SerializedName("editions") val editions: List<HardcoverEdition>?,
+    @SerializedName("books") val books: List<HardcoverBookResult>?
+)
+
+data class HardcoverBookResult(
+    @SerializedName("title") val title: String?,
+    @SerializedName("description") val description: String?,
+    @SerializedName("contributions") val contributions: List<HardcoverContribution>?,
+    @SerializedName("book_series") val bookSeries: List<HardcoverBookSeries>?,
+    @SerializedName("editions") val editions: List<HardcoverEditionSummary>?
+)
+
+data class HardcoverEditionSummary(
+    @SerializedName("pages") val pages: Int?,
+    @SerializedName("image") val image: HardcoverImage?,
+    @SerializedName("publisher") val publisher: HardcoverPublisher?,
+    @SerializedName("release_date") val releaseDate: String?
 )
 
 data class HardcoverEdition(
@@ -78,7 +136,17 @@ data class HardcoverImage(
 data class HardcoverBook(
     @SerializedName("title") val title: String?,
     @SerializedName("description") val description: String?,
-    @SerializedName("contributions") val contributions: List<HardcoverContribution>?
+    @SerializedName("contributions") val contributions: List<HardcoverContribution>?,
+    @SerializedName("book_series") val bookSeries: List<HardcoverBookSeries>?
+)
+
+data class HardcoverBookSeries(
+    @SerializedName("series") val series: HardcoverSeries?,
+    @SerializedName("position") val position: Float?
+)
+
+data class HardcoverSeries(
+    @SerializedName("name") val name: String?
 )
 
 data class HardcoverContribution(

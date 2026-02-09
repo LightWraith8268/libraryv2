@@ -10,6 +10,7 @@ import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
 import com.inknironapps.libraryiq.data.remote.GoogleBookItem
 import com.inknironapps.libraryiq.data.remote.HardcoverApiService
+import com.inknironapps.libraryiq.data.remote.HardcoverBookResult
 import com.inknironapps.libraryiq.data.remote.HardcoverEdition
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
@@ -124,28 +125,146 @@ class BookRepository @Inject constructor(
             }
         } else null
 
-        val diagStr = diag.joinToString(" | ")
-        DebugLog.d(TAG, "Diagnostics: $diagStr")
-
-        // Collect all results and merge
-        val sources = listOfNotNull(
+        // Collect all ISBN-based results and merge
+        val isbnSources = listOfNotNull(
             googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook, amazonBook
         )
 
-        if (sources.isNotEmpty()) {
-            val merged = sources.drop(1).fold(sources.first()) { acc, book ->
-                mergeBooks(acc, book)
-            }
-            DebugLog.d(TAG, "Final result: ${merged.title} by ${merged.author}")
-            return LookupResult(merged, diagStr)
+        if (isbnSources.isEmpty()) {
+            val diagStr = diag.joinToString(" | ")
+            DebugLog.d(TAG, "No sources found for ISBN: $isbn")
+            return LookupResult(null, diagStr)
         }
 
-        DebugLog.d(TAG, "No sources found for ISBN: $isbn")
-        return LookupResult(null, diagStr)
+        var merged = isbnSources.drop(1).fold(isbnSources.first()) { acc, book ->
+            mergeBooks(acc, book)
+        }
+
+        // 7. Title-based enrichment: if metadata is incomplete, search by title+author
+        if (needsEnrichment(merged)) {
+            DebugLog.d(TAG, "Metadata incomplete, enriching by title: '${merged.title}' by '${merged.author}'")
+            val titleSources = searchByTitle(merged.title, merged.author, isbn)
+            for (enrichment in titleSources) {
+                merged = mergeBooks(merged, enrichment)
+            }
+            if (titleSources.isNotEmpty()) {
+                diag.add("title-enrich: ${titleSources.size} hit(s)")
+            }
+        }
+
+        val diagStr = diag.joinToString(" | ")
+        DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
+            "[cover=${merged.coverUrl != null}, desc=${merged.description != null}, " +
+            "pages=${merged.pageCount}, pub=${merged.publisher}]")
+        return LookupResult(merged, diagStr)
     }
 
     var lastErrors = mutableListOf<String>()
         private set
+
+    /**
+     * Checks if a book result is missing important metadata that
+     * could be filled by searching other APIs by title.
+     */
+    private fun needsEnrichment(book: Book): Boolean {
+        val missingFields = listOf(
+            book.coverUrl == null,
+            book.description == null,
+            book.pageCount == null,
+            book.publisher == null,
+            book.author == "Unknown Author",
+            book.series == null,
+            book.seriesNumber == null
+        )
+        return missingFields.count { it } >= 2
+    }
+
+    /**
+     * Searches Google Books, Open Library, and Hardcover by title+author
+     * to find additional metadata (especially series info) for an
+     * already-identified book. Uses the full title to match editions.
+     */
+    private suspend fun searchByTitle(title: String, author: String, isbn: String): List<Book> {
+        val results = mutableListOf<Book>()
+
+        // Strip common edition suffixes for a cleaner base title search
+        val baseTitle = title
+            .replace(Regex("""\s*:\s*(Deluxe|Special|Collector['']?s?|Limited|Anniversary)\s+Edition.*""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+(Hardcover|Paperback|Mass Market).*""", RegexOption.IGNORE_CASE), "")
+            .trim()
+
+        val searchQuery = if (author != "Unknown Author") {
+            "$baseTitle $author"
+        } else {
+            baseTitle
+        }
+
+        // Google Books title search (use full title first for edition match)
+        try {
+            val query = if (author != "Unknown Author") {
+                "intitle:$baseTitle+inauthor:$author"
+            } else {
+                "intitle:$baseTitle"
+            }
+            val response = bookApiService.searchByIsbn(query)
+            val bestMatch = response.items?.firstOrNull()
+            if (bestMatch != null) {
+                val book = googleBookToBook(bestMatch, isbn)
+                DebugLog.d(TAG, "GB(title): '${book.title}' by ${book.author}")
+                results.add(book)
+            } else {
+                DebugLog.d(TAG, "GB(title): miss for '$baseTitle'")
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "GB(title) error: ${e.message}")
+        }
+
+        // Open Library title search
+        try {
+            val searchResponse = openLibraryApiService.search(searchQuery)
+            val bestMatch = searchResponse.docs?.firstOrNull()
+            if (bestMatch != null) {
+                val book = Book(
+                    title = bestMatch.title ?: title,
+                    author = bestMatch.authorNames?.joinToString(", ") ?: author,
+                    isbn = isbn,
+                    coverUrl = bestMatch.coverId?.let { OpenLibraryApiService.coverUrl(it, "L") },
+                    pageCount = bestMatch.pageCount,
+                    publisher = bestMatch.publishers?.firstOrNull(),
+                    publishedDate = bestMatch.publishDates?.firstOrNull(),
+                    subjects = bestMatch.subjects?.take(10)?.joinToString(", ")
+                )
+                DebugLog.d(TAG, "OL(title): '${book.title}' by ${book.author}")
+                results.add(book)
+            } else {
+                DebugLog.d(TAG, "OL(title): miss for '$searchQuery'")
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "OL(title) error: ${e.message}")
+        }
+
+        // Hardcover title search (best source for series data)
+        if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
+            try {
+                val response = hardcoverApiService.query(
+                    HardcoverApiService.buildTitleQuery(baseTitle)
+                )
+                val bestMatch = response.data?.books?.firstOrNull()
+                if (bestMatch != null) {
+                    val book = hardcoverBookResultToBook(bestMatch, isbn)
+                    DebugLog.d(TAG, "HC(title): '${book.title}' by ${book.author}, " +
+                        "series=${book.series} #${book.seriesNumber}")
+                    results.add(book)
+                } else {
+                    DebugLog.d(TAG, "HC(title): miss for '$baseTitle'")
+                }
+            } catch (e: Exception) {
+                DebugLog.e(TAG, "HC(title) error: ${e.message}")
+            }
+        }
+
+        return results
+    }
 
     private suspend fun tryGoogleBooksIsbn(isbn: String): Book? {
         return try {
@@ -354,6 +473,12 @@ class BookRepository @Inject constructor(
             ?.mapNotNull { it.author?.name }
             ?: emptyList()
 
+        val seriesInfo = edition.book?.bookSeries?.firstOrNull()
+        val seriesName = seriesInfo?.series?.name
+        val seriesNumber = seriesInfo?.position?.let {
+            if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
+        }
+
         return Book(
             title = edition.book?.title ?: edition.title ?: "Unknown Title",
             author = authorNames.joinToString(", ").ifBlank { "Unknown Author" },
@@ -363,7 +488,39 @@ class BookRepository @Inject constructor(
             coverUrl = edition.image?.url,
             pageCount = edition.pages,
             publisher = edition.publisher?.name,
-            publishedDate = edition.releaseDate
+            publishedDate = edition.releaseDate,
+            series = seriesName,
+            seriesNumber = seriesNumber
+        )
+    }
+
+    private fun hardcoverBookResultToBook(
+        bookResult: HardcoverBookResult,
+        isbn: String
+    ): Book {
+        val authorNames = bookResult.contributions
+            ?.mapNotNull { it.author?.name }
+            ?: emptyList()
+
+        val seriesInfo = bookResult.bookSeries?.firstOrNull()
+        val seriesName = seriesInfo?.series?.name
+        val seriesNumber = seriesInfo?.position?.let {
+            if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
+        }
+
+        val edition = bookResult.editions?.firstOrNull()
+
+        return Book(
+            title = bookResult.title ?: "Unknown Title",
+            author = authorNames.joinToString(", ").ifBlank { "Unknown Author" },
+            isbn = isbn,
+            description = bookResult.description,
+            coverUrl = edition?.image?.url,
+            pageCount = edition?.pages,
+            publisher = edition?.publisher?.name,
+            publishedDate = edition?.releaseDate,
+            series = seriesName,
+            seriesNumber = seriesNumber
         )
     }
 
