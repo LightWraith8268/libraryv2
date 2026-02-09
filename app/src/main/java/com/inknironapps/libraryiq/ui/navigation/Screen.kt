@@ -2,6 +2,7 @@ package com.inknironapps.libraryiq.ui.navigation
 
 sealed class Screen(val route: String) {
     data object Library : Screen("library")
+    data object Spinner : Screen("spinner")
     data object Collections : Screen("collections")
     data object Settings : Screen("settings")
     data object AddBook : Screen("add_book?isbn={isbn}") {
