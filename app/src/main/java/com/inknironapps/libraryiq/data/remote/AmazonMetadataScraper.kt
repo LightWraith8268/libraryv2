@@ -20,8 +20,9 @@ class AmazonMetadataScraper @Inject constructor() {
 
     companion object {
         private const val TAG = "AmazonScraper"
+        // Desktop user agent gets more complete HTML than mobile
         private const val USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     }
 
     private val client = OkHttpClient.Builder()
@@ -96,7 +97,6 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     private fun extractFirstAsin(html: String): String? {
-        // Amazon search results contain links like /dp/ASIN/ or /gp/product/ASIN/
         val dpRegex = """/dp/([A-Z0-9]{10})""".toRegex()
         return dpRegex.find(html)?.groupValues?.get(1)
     }
@@ -124,12 +124,10 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     private fun extractSearchTitle(html: String): String? {
-        // Primary: span inside title-recipe div
         val titleRecipe = """data-cy="title-recipe"[^>]*>.*?<span[^>]*>([^<]+)</span>"""
             .toRegex(RegexOption.DOT_MATCHES_ALL)
             .find(html)?.groupValues?.get(1)?.trim()
 
-        // Fallback: a-size-medium text
         val mediumText = """class="a-size-medium[^"]*a-text-normal"[^>]*>([^<]+)</""".toRegex()
             .find(html)?.groupValues?.get(1)?.trim()
 
@@ -137,30 +135,20 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     private fun extractSearchAuthor(html: String): String? {
-        // Look for "by Author Name" pattern - the word "by" followed by author link/text
-        // Pattern 1: <span class="a-size-base">by </span>...<a ...>Author</a>
         val byLinkRegex = """>\s*by\s*</span>\s*(?:<[^>]+>\s*)*<a[^>]*>([^<]+)</a>"""
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         val byLink = byLinkRegex.find(html)?.groupValues?.get(1)?.trim()
         if (byLink != null && isValidAuthor(byLink)) return byLink
 
-        // Pattern 2: "by" as text followed by author name in next element
         val byTextRegex = """\bby\s+</span>\s*<span[^>]*>([^<]+)</span>"""
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         val byText = byTextRegex.find(html)?.groupValues?.get(1)?.trim()
         if (byText != null && isValidAuthor(byText)) return byText
 
-        // Pattern 3: author field in structured data
-        val ldJsonRegex = """"author"\s*:\s*\[\s*\{\s*"name"\s*:\s*"([^"]+)""""
-            .toRegex()
-        val ldAuthor = ldJsonRegex.find(html)?.groupValues?.get(1)?.trim()
-        if (ldAuthor != null) return ldAuthor
-
         return null
     }
 
     private fun extractSearchImage(html: String): String? {
-        // s-image class is the main product image in search results
         val imgRegex = """<img[^>]*class="s-image"[^>]*src="([^"]+)"[^>]*/?>""".toRegex()
         return imgRegex.find(html)?.groupValues?.get(1)
     }
@@ -168,13 +156,19 @@ class AmazonMetadataScraper @Inject constructor() {
     // --- Product Page Parsing ---
 
     private fun parseProductPage(html: String, isbn: String): Book? {
-        val title = extractProductTitle(html)
+        // Most reliable: parse <title> tag
+        // Format: "Book Title: Author Last, First: 9781234567890: Amazon.com: Books"
+        val titleTagResult = parseHtmlTitleTag(html)
+
+        val title = titleTagResult?.first
+            ?: extractProductTitleFromHtml(html)
         if (title == null) {
             DebugLog.d(TAG, "No title found in product page")
             return null
         }
 
         val author = extractProductAuthor(html)
+            ?: titleTagResult?.second
         val imageUrl = extractProductImage(html)
         val description = extractProductDescription(html)
         val publisher = extractDetailBullet(html, "Publisher")
@@ -196,19 +190,62 @@ class AmazonMetadataScraper @Inject constructor() {
         )
     }
 
-    private fun extractProductTitle(html: String): String? {
-        // Try productTitle span first (most reliable)
-        val productTitle = extractInnerText(html, """id="productTitle"""")
-        if (productTitle != null) return productTitle
+    /**
+     * Parses the HTML <title> tag which is the most reliable metadata source.
+     * Amazon format: "Book Title: Author Last, First: ISBN: Amazon.com: Books"
+     * Returns Pair(title, author) or null.
+     */
+    private fun parseHtmlTitleTag(html: String): Pair<String, String?>? {
+        val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
+        val rawTitle = titleRegex.find(html)?.groupValues?.get(1)?.trim() ?: return null
 
-        // og:title meta tag
+        // Remove "Amazon.com: " prefix if present
+        val cleaned = rawTitle
+            .replace(Regex("""^Amazon\.com\s*:\s*""", RegexOption.IGNORE_CASE), "")
+
+        // Split on ": " to extract parts
+        // Typical: "Book Title: Author: ISBN: Amazon.com: Books"
+        val parts = cleaned.split(Regex("""\s*:\s*"""))
+
+        // Find and remove the Amazon.com and Books parts
+        val meaningful = parts.filter { part ->
+            !part.equals("Amazon.com", ignoreCase = true) &&
+            !part.equals("Books", ignoreCase = true) &&
+            !part.matches(Regex("""\d{10,13}""")) && // ISBNs
+            part.isNotBlank()
+        }
+
+        if (meaningful.isEmpty()) return null
+
+        val bookTitle = meaningful.first()
+
+        // Author is usually the second meaningful part (if it looks like a name)
+        val authorCandidate = meaningful.getOrNull(1)
+        val author = if (authorCandidate != null && isValidAuthor(authorCandidate) &&
+            !authorCandidate.equals(bookTitle, ignoreCase = true)) {
+            // Amazon uses "Last, First" format - flip to "First Last"
+            if (authorCandidate.contains(",")) {
+                authorCandidate.split(",").map { it.trim() }.reversed().joinToString(" ")
+            } else {
+                authorCandidate
+            }
+        } else null
+
+        DebugLog.d(TAG, "Title tag parsed: '$bookTitle' by '$author' (raw: '$rawTitle')")
+        return Pair(bookTitle, author)
+    }
+
+    private fun extractProductTitleFromHtml(html: String): String? {
+        // productTitle span
+        val spanRegex = """id="productTitle"[^>]*>([^<]+)</""".toRegex()
+        val spanTitle = spanRegex.find(html)?.groupValues?.get(1)?.trim()
+        if (spanTitle != null && isValidTitle(spanTitle)) return spanTitle
+
+        // og:title meta
         val ogTitle = extractMeta(html, "og:title")
-        if (ogTitle != null) return ogTitle
+        if (ogTitle != null && isValidTitle(ogTitle)) return ogTitle
 
-        // LD+JSON structured data
-        val ldTitle = """"name"\s*:\s*"([^"]+)"""".toRegex()
-            .find(html)?.groupValues?.get(1)
-        return ldTitle
+        return null
     }
 
     private fun extractProductAuthor(html: String): String? {
@@ -218,54 +255,86 @@ class AmazonMetadataScraper @Inject constructor() {
         val byline = bylineRegex.find(html)?.groupValues?.get(1)?.trim()
         if (byline != null && isValidAuthor(byline)) return byline
 
-        // Pattern 2: any author class link
-        val authorRegex = """class="author[^"]*"[^>]*>.*?<a[^>]*>([^<]+)</a>"""
-            .toRegex(RegexOption.DOT_MATCHES_ALL)
-        val author = authorRegex.find(html)?.groupValues?.get(1)?.trim()
-        if (author != null && isValidAuthor(author)) return author
+        // Pattern 2: any author contributorNameID
+        val contribRegex = """class="contributorNameID"[^>]*>([^<]+)</""".toRegex()
+        val contrib = contribRegex.find(html)?.groupValues?.get(1)?.trim()
+        if (contrib != null && isValidAuthor(contrib)) return contrib
 
         // Pattern 3: "by" followed by a link
-        val byRegex = """<span[^>]*>\s*by\s*</span>\s*<span[^>]*>\s*<a[^>]*>([^<]+)</a>"""
+        val byRegex = """<span[^>]*>\s*by\s*</span>\s*(?:<[^>]+>\s*)*<a[^>]*>([^<]+)</a>"""
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         val byAuthor = byRegex.find(html)?.groupValues?.get(1)?.trim()
         if (byAuthor != null && isValidAuthor(byAuthor)) return byAuthor
 
-        // Pattern 4: LD+JSON
-        val ldRegex = """"author"\s*:\s*(?:\[\s*\{\s*)?"name"\s*:\s*"([^"]+)""""
-            .toRegex()
-        return ldRegex.find(html)?.groupValues?.get(1)?.trim()
+        return null
     }
 
     private fun extractProductImage(html: String): String? {
-        // Main product image (high-res)
-        val imgRegex = """"hiRes"\s*:\s*"([^"]+)"""".toRegex()
-        val hiRes = imgRegex.find(html)?.groupValues?.get(1)
+        // High-res image from JavaScript data
+        val hiResRegex = """"hiRes"\s*:\s*"(https?://[^"]+)"""".toRegex()
+        val hiRes = hiResRegex.find(html)?.groupValues?.get(1)
         if (hiRes != null) return hiRes
 
-        // Landing image
-        val landingRegex = """id="landingImage"[^>]*src="([^"]+)"""".toRegex()
+        // Large image from colorImages data
+        val largeRegex = """"large"\s*:\s*"(https?://[^"]+)"""".toRegex()
+        val large = largeRegex.find(html)?.groupValues?.get(1)
+        if (large != null) return large
+
+        // Landing image tag
+        val landingRegex = """id="landingImage"[^>]*src="(https?://[^"]+)"""".toRegex()
         val landing = landingRegex.find(html)?.groupValues?.get(1)
         if (landing != null) return landing
 
         // og:image
-        return extractMeta(html, "og:image")
+        val ogImage = extractMeta(html, "og:image")
+        if (ogImage != null && ogImage.startsWith("http")) return ogImage
+
+        // imgBlkFront (common image ID)
+        val blkFrontRegex = """id="imgBlkFront"[^>]*src="(https?://[^"]+)"""".toRegex()
+        return blkFrontRegex.find(html)?.groupValues?.get(1)
     }
 
     private fun extractProductDescription(html: String): String? {
-        // Book description div
-        val descHtml = extractInnerText(html, """data-a-expander-name="book_description_expander"""")
-        if (descHtml != null) return stripHtmlTags(descHtml)
+        // Book description expander
+        val expanderRegex = """data-a-expander-name="book_description_expander"[^>]*>(.+?)</div>\s*</div>"""
+            .toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+        val expander = expanderRegex.find(html)?.groupValues?.get(1)
+        if (expander != null) {
+            val text = stripHtmlTags(expander).trim()
+            if (text.length > 20) return text
+        }
 
-        return extractMeta(html, "description")
+        // iframeContent for description
+        val iframeRegex = """id="iframeContent"[^>]*>(.+?)</div>"""
+            .toRegex(RegexOption.DOT_MATCHES_ALL)
+        val iframe = iframeRegex.find(html)?.groupValues?.get(1)
+        if (iframe != null) {
+            val text = stripHtmlTags(iframe).trim()
+            if (text.length > 20) return text
+        }
+
+        val desc = extractMeta(html, "description")
+        if (desc != null && desc.length > 20) return desc
+
+        return null
     }
 
     private fun extractPageCount(html: String): Int? {
-        // Look for "X pages" in detail bullets or carousel
-        val pagesRegex = """(\d+)\s+pages""".toRegex(RegexOption.IGNORE_CASE)
+        // "X pages" pattern in detail section
+        val pagesRegex = """(\d{2,4})\s+pages""".toRegex(RegexOption.IGNORE_CASE)
         return pagesRegex.find(html)?.groupValues?.get(1)?.toIntOrNull()
     }
 
     // --- Utility methods ---
+
+    private fun isValidTitle(text: String): Boolean {
+        val lower = text.lowercase()
+        return text.length >= 2 &&
+            !lower.contains("amazon") &&
+            !text.matches(Regex("[a-zA-Z]+[A-Z][a-zA-Z]+")) && // camelCase JS vars
+            !lower.startsWith("http") &&
+            text.contains(" ") // real titles have spaces
+    }
 
     private fun isValidAuthor(text: String): Boolean {
         val lower = text.lowercase()
@@ -275,7 +344,10 @@ class AmazonMetadataScraper @Inject constructor() {
             !lower.contains("format") &&
             !lower.contains("edition") &&
             !lower.contains("learn more") &&
-            !lower.contains("click here")
+            !lower.contains("click here") &&
+            !lower.contains("amazon") &&
+            !lower.startsWith("@") &&
+            !lower.startsWith("http")
     }
 
     private fun extractMeta(html: String, property: String): String? {
@@ -287,25 +359,16 @@ class AmazonMetadataScraper @Inject constructor() {
             ?: altRegex.find(html)?.groupValues?.get(1)
     }
 
-    private fun extractInnerText(html: String, marker: String): String? {
-        val startIdx = html.indexOf(marker)
-        if (startIdx == -1) return null
-        // Find the closing > of this tag
-        val tagClose = html.indexOf(">", startIdx)
-        if (tagClose == -1) return null
-        // Find content between > and next closing tag
-        val contentStart = tagClose + 1
-        // Look for a reasonable chunk of text
-        val chunk = html.substring(contentStart, minOf(contentStart + 5000, html.length))
-        // Get text content, stripping nested tags
-        val firstText = stripHtmlTags(chunk).trim()
-        return firstText.ifBlank { null }
-    }
-
     private fun extractDetailBullet(html: String, label: String): String? {
+        // Match label followed by colon and value, with possible HTML tags/RTL marks between
         val regex = """$label\s*(?:</[^>]+>\s*)*(?:<[^>]+>\s*)*[:\u200F\u200E]\s*(?:</[^>]+>\s*)*(?:<[^>]+>\s*)*([^<]+)"""
             .toRegex(RegexOption.IGNORE_CASE)
-        return regex.find(html)?.groupValues?.get(1)?.trim()?.ifBlank { null }
+        val result = regex.find(html)?.groupValues?.get(1)?.trim()
+        // Validate - reject social media handles, URLs, long garbage
+        if (result != null && result.length < 100 && !result.startsWith("@") && !result.startsWith("http")) {
+            return result
+        }
+        return null
     }
 
     private fun stripHtmlTags(html: String): String {

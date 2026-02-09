@@ -75,15 +75,25 @@ class BookRepository @Inject constructor(
      * 8. Amazon product page scraping (like Calibre)
      * Merges results for the most complete metadata.
      */
-    suspend fun lookupByIsbn(isbn: String): LookupResult {
-        DebugLog.d(TAG, "lookupByIsbn: $isbn")
+    suspend fun lookupByIsbn(isbn: String): LookupResult = doLookup(isbn, skipLocal = false)
+
+    /**
+     * Same as lookupByIsbn but skips the local database check.
+     * Used when refreshing metadata for an already-saved book.
+     */
+    suspend fun lookupByIsbnSkipLocal(isbn: String): LookupResult = doLookup(isbn, skipLocal = true)
+
+    private suspend fun doLookup(isbn: String, skipLocal: Boolean): LookupResult {
+        DebugLog.d(TAG, "lookupByIsbn: $isbn (skipLocal=$skipLocal)")
         val diag = mutableListOf<String>()
 
-        // Check local database first
-        val existingBook = bookDao.getBookByIsbn(isbn)
-        if (existingBook != null) {
-            DebugLog.d(TAG, "Found in local database: ${existingBook.title}")
-            return LookupResult(existingBook, "Found in local database")
+        // Check local database first (unless refreshing)
+        if (!skipLocal) {
+            val existingBook = bookDao.getBookByIsbn(isbn)
+            if (existingBook != null) {
+                DebugLog.d(TAG, "Found in local database: ${existingBook.title}")
+                return LookupResult(existingBook, "Found in local database")
+            }
         }
 
         val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) {

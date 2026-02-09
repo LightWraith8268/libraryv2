@@ -23,6 +23,8 @@ data class BookDetailUiState(
     val allCollections: List<Collection> = emptyList(),
     val isEditing: Boolean = false,
     val isDeleted: Boolean = false,
+    val isRefreshing: Boolean = false,
+    val refreshMessage: String? = null,
     val editTitle: String = "",
     val editAuthor: String = "",
     val editNotes: String = ""
@@ -100,6 +102,64 @@ class BookDetailViewModel @Inject constructor(
             )
             _uiState.value = _uiState.value.copy(isEditing = false)
         }
+    }
+
+    fun refreshMetadata() {
+        val book = _uiState.value.book ?: return
+        val isbn = book.isbn
+        if (isbn.isNullOrBlank()) {
+            _uiState.value = _uiState.value.copy(
+                refreshMessage = "No ISBN available to look up"
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshing = true, refreshMessage = null)
+            try {
+                // Temporarily remove from local DB cache so lookupByIsbn doesn't short-circuit
+                val result = bookRepository.lookupByIsbnSkipLocal(isbn)
+                if (result.book != null) {
+                    val fresh = result.book
+                    // Merge: keep user-set fields, fill in missing metadata
+                    val updated = book.copy(
+                        title = if (book.title == "Unknown Title" && fresh.title != "Unknown Title") fresh.title else book.title,
+                        author = if (book.author == "Unknown Author" && fresh.author != "Unknown Author") fresh.author else book.author,
+                        description = book.description ?: fresh.description,
+                        coverUrl = book.coverUrl ?: fresh.coverUrl,
+                        pageCount = book.pageCount ?: fresh.pageCount,
+                        publisher = book.publisher ?: fresh.publisher,
+                        publishedDate = book.publishedDate ?: fresh.publishedDate,
+                        isbn10 = book.isbn10 ?: fresh.isbn10,
+                        series = book.series ?: fresh.series,
+                        seriesNumber = book.seriesNumber ?: fresh.seriesNumber,
+                        genre = book.genre ?: fresh.genre,
+                        language = book.language ?: fresh.language,
+                        format = book.format ?: fresh.format,
+                        subjects = book.subjects ?: fresh.subjects
+                    )
+                    bookRepository.updateBook(updated)
+                    _uiState.value = _uiState.value.copy(
+                        isRefreshing = false,
+                        refreshMessage = "Metadata updated\n${result.diagnostics}"
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isRefreshing = false,
+                        refreshMessage = "No new data found\n${result.diagnostics}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isRefreshing = false,
+                    refreshMessage = "Refresh failed: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun clearRefreshMessage() {
+        _uiState.value = _uiState.value.copy(refreshMessage = null)
     }
 
     fun deleteBook() {
