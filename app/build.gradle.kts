@@ -12,9 +12,13 @@ plugins {
 // MAJOR: breaking changes / major redesigns
 // MINOR: new features (backward compatible)
 // PATCH: bug fixes and small improvements
+// Each number can grow without limit (no 99 cap).
+// versionBuild is a separate monotonic counter for Play Store -
+// increment it with every release regardless of version numbers.
 val versionMajor = 1
 val versionMinor = 3
 val versionPatch = 0
+val versionBuild = 1  // Bump this with every release
 
 android {
     namespace = "com.inknironapps.libraryiq"
@@ -24,7 +28,7 @@ android {
         applicationId = "com.inknironapps.libraryiq"
         minSdk = 26
         targetSdk = 34
-        versionCode = versionMajor * 10000 + versionMinor * 100 + versionPatch
+        versionCode = versionBuild
         versionName = "$versionMajor.$versionMinor.$versionPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
