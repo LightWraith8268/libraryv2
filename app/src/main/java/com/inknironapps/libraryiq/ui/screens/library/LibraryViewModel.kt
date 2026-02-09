@@ -42,6 +42,7 @@ data class GroupedBooks(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val bookRepository: BookRepository,
+    private val libraryPreferences: LibraryPreferences,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -51,11 +52,23 @@ class LibraryViewModel @Inject constructor(
     private val _selectedFilter = MutableStateFlow<ReadingStatus?>(null)
     val selectedFilter: StateFlow<ReadingStatus?> = _selectedFilter.asStateFlow()
 
-    private val _sortOption = MutableStateFlow(SortOption.TITLE_ASC)
+    private val _sortOption = MutableStateFlow(libraryPreferences.defaultSort)
     val sortOption: StateFlow<SortOption> = _sortOption.asStateFlow()
 
-    private val _groupOption = MutableStateFlow(GroupOption.NONE)
+    private val _groupOption = MutableStateFlow(libraryPreferences.defaultGroup)
     val groupOption: StateFlow<GroupOption> = _groupOption.asStateFlow()
+
+    private val _layout = MutableStateFlow(libraryPreferences.layout)
+    val layout: StateFlow<LibraryLayout> = _layout.asStateFlow()
+
+    private val _gridColumns = MutableStateFlow(libraryPreferences.gridColumns)
+    val gridColumns: StateFlow<Int> = _gridColumns.asStateFlow()
+
+    private val _showCovers = MutableStateFlow(libraryPreferences.showCovers)
+    val showCovers: StateFlow<Boolean> = _showCovers.asStateFlow()
+
+    private val _compactList = MutableStateFlow(libraryPreferences.compactList)
+    val compactList: StateFlow<Boolean> = _compactList.asStateFlow()
 
     private val _authorFilter = MutableStateFlow(savedStateHandle.get<String>("filterAuthor"))
     val authorFilter: StateFlow<String?> = _authorFilter.asStateFlow()
@@ -122,10 +135,32 @@ class LibraryViewModel @Inject constructor(
 
     fun onSortOptionSelected(option: SortOption) {
         _sortOption.value = option
+        libraryPreferences.defaultSort = option
     }
 
     fun onGroupOptionSelected(option: GroupOption) {
         _groupOption.value = option
+        libraryPreferences.defaultGroup = option
+    }
+
+    fun setLayout(layout: LibraryLayout) {
+        _layout.value = layout
+        libraryPreferences.layout = layout
+    }
+
+    fun setGridColumns(columns: Int) {
+        _gridColumns.value = columns
+        libraryPreferences.gridColumns = columns
+    }
+
+    fun setShowCovers(show: Boolean) {
+        _showCovers.value = show
+        libraryPreferences.showCovers = show
+    }
+
+    fun setCompactList(compact: Boolean) {
+        _compactList.value = compact
+        libraryPreferences.compactList = compact
     }
 
     fun clearAuthorFilter() {

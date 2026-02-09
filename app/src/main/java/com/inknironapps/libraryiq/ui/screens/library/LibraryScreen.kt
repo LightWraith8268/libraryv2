@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -23,13 +27,13 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.components.BookCard
+import com.inknironapps.libraryiq.ui.components.BookGridCard
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
 import com.inknironapps.libraryiq.ui.navigation.Screen
 
@@ -71,6 +76,10 @@ fun LibraryScreen(
     val groupOption by viewModel.groupOption.collectAsStateWithLifecycle()
     val authorFilter by viewModel.authorFilter.collectAsStateWithLifecycle()
     val seriesFilter by viewModel.seriesFilter.collectAsStateWithLifecycle()
+    val layout by viewModel.layout.collectAsStateWithLifecycle()
+    val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
+    val showCovers by viewModel.showCovers.collectAsStateWithLifecycle()
+    val compactList by viewModel.compactList.collectAsStateWithLifecycle()
     var expanded by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showGroupMenu by remember { mutableStateOf(false) }
@@ -89,6 +98,20 @@ fun LibraryScreen(
                     }
                 },
                 actions = {
+                    // Layout toggle
+                    IconButton(onClick = {
+                        viewModel.setLayout(
+                            if (layout == LibraryLayout.LIST) LibraryLayout.GRID
+                            else LibraryLayout.LIST
+                        )
+                    }) {
+                        Icon(
+                            if (layout == LibraryLayout.LIST) Icons.Default.GridView
+                            else Icons.Default.ViewList,
+                            contentDescription = "Toggle layout"
+                        )
+                    }
+
                     // Sort button
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
@@ -257,7 +280,7 @@ fun LibraryScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Book list
+            // Book list/grid
             if (books.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -282,24 +305,74 @@ fun LibraryScreen(
                         }
                     }
                 }
+            } else if (layout == LibraryLayout.GRID) {
+                // Grid layout
+                if (groupOption == GroupOption.NONE) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridColumns),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(books, key = { it.id }) { book ->
+                            BookGridCard(
+                                book = book,
+                                onClick = {
+                                    navController.navigate(Screen.BookDetail.createRoute(book.id))
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridColumns),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        groupedBooks.forEach { group ->
+                            item(
+                                key = "header_${group.groupName}",
+                                span = { GridItemSpan(maxLineSpan) }
+                            ) {
+                                GroupHeader(
+                                    title = group.groupName,
+                                    count = group.books.size
+                                )
+                            }
+                            items(group.books, key = { it.id }) { book ->
+                                BookGridCard(
+                                    book = book,
+                                    onClick = {
+                                        navController.navigate(Screen.BookDetail.createRoute(book.id))
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             } else if (groupOption == GroupOption.NONE) {
+                // List layout - no grouping
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(if (compactList) 4.dp else 8.dp)
                 ) {
                     items(books, key = { it.id }) { book ->
                         BookCard(
                             book = book,
                             onClick = {
                                 navController.navigate(Screen.BookDetail.createRoute(book.id))
-                            }
+                            },
+                            showCover = showCovers,
+                            compact = compactList
                         )
                     }
                 }
             } else {
+                // List layout - with grouping
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(if (compactList) 4.dp else 8.dp)
                 ) {
                     groupedBooks.forEach { group ->
                         item(key = "header_${group.groupName}") {
@@ -313,7 +386,9 @@ fun LibraryScreen(
                                 book = book,
                                 onClick = {
                                     navController.navigate(Screen.BookDetail.createRoute(book.id))
-                                }
+                                },
+                                showCover = showCovers,
+                                compact = compactList
                             )
                         }
                     }
