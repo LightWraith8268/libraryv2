@@ -26,5 +26,18 @@ data class Book(
     val format: String? = null,
     val subjects: String? = null,
     val dateAdded: Long = System.currentTimeMillis(),
-    val dateModified: Long = System.currentTimeMillis()
+    val dateModified: Long = System.currentTimeMillis(),
+    // Calibre-like extended metadata
+    val asin: String? = null,
+    val goodreadsId: String? = null,
+    val openLibraryId: String? = null,
+    val hardcoverId: String? = null,
+    val tags: String? = null,
+    val edition: String? = null,
+    val originalTitle: String? = null,
+    val originalLanguage: String? = null,
+    // Per-user reading tracking
+    val dateStarted: Long? = null,
+    val dateFinished: Long? = null,
+    val currentPage: Int? = null
 )

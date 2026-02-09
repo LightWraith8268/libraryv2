@@ -32,6 +32,10 @@ import javax.inject.Singleton
  * One user creates a shared library (generates a 6-char code).
  * The other user joins with that code.
  * Both devices sync data under: libraries/{libraryCode}/
+ *
+ * Book metadata (title, author, isbn, notes, etc.) is shared across all members.
+ * Per-user data (readingStatus, rating, reading dates, current page) is stored
+ * separately under: libraries/{libraryCode}/userStatus/{userId}/books/{bookId}
  */
 @Singleton
 class FirestoreSync @Inject constructor(
@@ -53,6 +57,7 @@ class FirestoreSync @Inject constructor(
     private var booksListener: ListenerRegistration? = null
     private var collectionsListener: ListenerRegistration? = null
     private var crossRefsListener: ListenerRegistration? = null
+    private var userStatusListener: ListenerRegistration? = null
 
     val isSignedIn: Boolean
         get() = try {
@@ -90,6 +95,11 @@ class FirestoreSync @Inject constructor(
 
     private fun libraryCrossRefsRef() =
         firestore.collection("libraries").document(libraryCode!!).collection("bookCollections")
+
+    // Per-user reading status stored under userStatus/{userId}/books/{bookId}
+    private fun userStatusBooksRef(userId: String) =
+        firestore.collection("libraries").document(libraryCode!!)
+            .collection("userStatus").document(userId).collection("books")
 
     // --- Auth ---
 
@@ -229,7 +239,24 @@ class FirestoreSync @Inject constructor(
     suspend fun pushBook(book: Book) {
         if (!isSyncEnabled) return
         try {
-            libraryBooksRef().document(book.id).set(bookToMap(book), SetOptions.merge()).await()
+            // Push shared metadata (no per-user fields)
+            libraryBooksRef().document(book.id)
+                .set(bookToSharedMap(book), SetOptions.merge()).await()
+            // Push per-user status
+            val userId = getUserId() ?: return
+            userStatusBooksRef(userId).document(book.id)
+                .set(bookToUserStatusMap(book), SetOptions.merge()).await()
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Push only per-user fields (reading status, rating, dates, current page). */
+    suspend fun pushUserStatus(book: Book) {
+        if (!isSyncEnabled) return
+        val userId = getUserId() ?: return
+        try {
+            userStatusBooksRef(userId).document(book.id)
+                .set(bookToUserStatusMap(book), SetOptions.merge()).await()
         } catch (_: Exception) {
         }
     }
@@ -258,6 +285,9 @@ class FirestoreSync @Inject constructor(
         if (!isSyncEnabled) return
         try {
             libraryBooksRef().document(bookId).delete().await()
+            // Also delete per-user status for current user
+            val userId = getUserId() ?: return
+            userStatusBooksRef(userId).document(bookId).delete().await()
         } catch (_: Exception) {
         }
     }
@@ -285,12 +315,18 @@ class FirestoreSync @Inject constructor(
         crossRefs: List<BookCollectionCrossRef>
     ) {
         if (!isSyncEnabled) return
+        val userId = getUserId() ?: return
         try {
             val batch = firestore.batch()
             books.forEach { book ->
                 batch.set(
                     libraryBooksRef().document(book.id),
-                    bookToMap(book),
+                    bookToSharedMap(book),
+                    SetOptions.merge()
+                )
+                batch.set(
+                    userStatusBooksRef(userId).document(book.id),
+                    bookToUserStatusMap(book),
                     SetOptions.merge()
                 )
             }
@@ -317,13 +353,56 @@ class FirestoreSync @Inject constructor(
 
     fun startListening() {
         if (!isSyncEnabled) return
+        val userId = getUserId() ?: return
 
+        // Listen for shared book metadata - preserve local per-user fields
         booksListener = libraryBooksRef().addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
-            val books = snapshot.documents.mapNotNull { doc ->
-                mapToBook(doc.id, doc.data ?: return@mapNotNull null)
+            scope.launch {
+                snapshot.documents.forEach { doc ->
+                    val data = doc.data ?: return@forEach
+                    val sharedBook = mapToSharedBook(doc.id, data) ?: return@forEach
+                    // Merge with existing local book to preserve per-user fields
+                    val existing = bookDao.getBookByIdDirect(doc.id)
+                    // Preserve per-user fields from local (reading status + rating)
+                    val merged = if (existing != null) {
+                        sharedBook.copy(
+                            readingStatus = existing.readingStatus,
+                            rating = existing.rating,
+                            dateStarted = existing.dateStarted,
+                            dateFinished = existing.dateFinished,
+                            currentPage = existing.currentPage
+                        )
+                    } else {
+                        sharedBook
+                    }
+                    bookDao.insertBook(merged)
+                }
             }
-            scope.launch { books.forEach { bookDao.insertBook(it) } }
+        }
+
+        // Listen for current user's per-user reading status
+        userStatusListener = userStatusBooksRef(userId).addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null) return@addSnapshotListener
+            scope.launch {
+                snapshot.documents.forEach { doc ->
+                    val data = doc.data ?: return@forEach
+                    val bookId = doc.id
+                    val existing = bookDao.getBookByIdDirect(bookId) ?: return@forEach
+                    val updated = existing.copy(
+                        readingStatus = try {
+                            ReadingStatus.valueOf(data["readingStatus"] as? String ?: existing.readingStatus.name)
+                        } catch (_: Exception) {
+                            existing.readingStatus
+                        },
+                        rating = (data["rating"] as? Number)?.toFloat() ?: existing.rating,
+                        dateStarted = (data["dateStarted"] as? Number)?.toLong() ?: existing.dateStarted,
+                        dateFinished = (data["dateFinished"] as? Number)?.toLong() ?: existing.dateFinished,
+                        currentPage = (data["currentPage"] as? Number)?.toInt() ?: existing.currentPage
+                    )
+                    bookDao.updateBook(updated)
+                }
+            }
         }
 
         collectionsListener = libraryCollectionsRef().addSnapshotListener { snapshot, error ->
@@ -351,14 +430,17 @@ class FirestoreSync @Inject constructor(
         booksListener?.remove()
         collectionsListener?.remove()
         crossRefsListener?.remove()
+        userStatusListener?.remove()
         booksListener = null
         collectionsListener = null
         crossRefsListener = null
+        userStatusListener = null
     }
 
     // --- Data mapping ---
 
-    private fun bookToMap(book: Book): Map<String, Any?> = mapOf(
+    /** Shared book metadata (visible to all library members). */
+    private fun bookToSharedMap(book: Book): Map<String, Any?> = mapOf(
         "title" to book.title,
         "author" to book.author,
         "isbn" to book.isbn,
@@ -368,8 +450,6 @@ class FirestoreSync @Inject constructor(
         "pageCount" to book.pageCount,
         "publisher" to book.publisher,
         "publishedDate" to book.publishedDate,
-        "readingStatus" to book.readingStatus.name,
-        "rating" to book.rating,
         "notes" to book.notes,
         "series" to book.series,
         "seriesNumber" to book.seriesNumber,
@@ -377,8 +457,26 @@ class FirestoreSync @Inject constructor(
         "language" to book.language,
         "format" to book.format,
         "subjects" to book.subjects,
+        "tags" to book.tags,
         "dateAdded" to book.dateAdded,
-        "dateModified" to book.dateModified
+        "dateModified" to book.dateModified,
+        // Extended metadata
+        "asin" to book.asin,
+        "goodreadsId" to book.goodreadsId,
+        "openLibraryId" to book.openLibraryId,
+        "hardcoverId" to book.hardcoverId,
+        "edition" to book.edition,
+        "originalTitle" to book.originalTitle,
+        "originalLanguage" to book.originalLanguage
+    )
+
+    /** Per-user fields (private to each library member). */
+    private fun bookToUserStatusMap(book: Book): Map<String, Any?> = mapOf(
+        "readingStatus" to book.readingStatus.name,
+        "rating" to book.rating,
+        "dateStarted" to book.dateStarted,
+        "dateFinished" to book.dateFinished,
+        "currentPage" to book.currentPage
     )
 
     private fun collectionToMap(collection: Collection): Map<String, Any?> = mapOf(
@@ -388,24 +486,29 @@ class FirestoreSync @Inject constructor(
         "dateModified" to collection.dateModified
     )
 
-    private fun mapToBook(id: String, data: Map<String, Any?>): Book? {
+    /** Maps shared Firestore data to a Book with default per-user fields. */
+    private fun mapToSharedBook(id: String, data: Map<String, Any?>): Book? {
         return try {
+            // Handle backward compat: old data may have readingStatus in shared doc
+            val legacyStatus = try {
+                ReadingStatus.valueOf(data["readingStatus"] as? String ?: "UNREAD")
+            } catch (_: Exception) {
+                ReadingStatus.UNREAD
+            }
+
             Book(
                 id = id,
                 title = data["title"] as? String ?: return null,
                 author = data["author"] as? String ?: "",
                 isbn = data["isbn"] as? String,
+                isbn10 = data["isbn10"] as? String,
                 description = data["description"] as? String,
                 coverUrl = data["coverUrl"] as? String,
                 pageCount = (data["pageCount"] as? Number)?.toInt(),
                 publisher = data["publisher"] as? String,
                 publishedDate = data["publishedDate"] as? String,
-                readingStatus = try {
-                    ReadingStatus.valueOf(data["readingStatus"] as? String ?: "UNREAD")
-                } catch (_: Exception) {
-                    ReadingStatus.UNREAD
-                },
-                rating = (data["rating"] as? Number)?.toFloat(),
+                readingStatus = legacyStatus,
+                rating = (data["rating"] as? Number)?.toFloat(), // backward compat: old data may have rating here
                 notes = data["notes"] as? String,
                 series = data["series"] as? String,
                 seriesNumber = data["seriesNumber"] as? String,
@@ -413,10 +516,18 @@ class FirestoreSync @Inject constructor(
                 language = data["language"] as? String,
                 format = data["format"] as? String,
                 subjects = data["subjects"] as? String,
+                tags = data["tags"] as? String,
                 dateAdded = (data["dateAdded"] as? Number)?.toLong()
                     ?: System.currentTimeMillis(),
                 dateModified = (data["dateModified"] as? Number)?.toLong()
-                    ?: System.currentTimeMillis()
+                    ?: System.currentTimeMillis(),
+                asin = data["asin"] as? String,
+                goodreadsId = data["goodreadsId"] as? String,
+                openLibraryId = data["openLibraryId"] as? String,
+                hardcoverId = data["hardcoverId"] as? String,
+                edition = data["edition"] as? String,
+                originalTitle = data["originalTitle"] as? String,
+                originalLanguage = data["originalLanguage"] as? String
             )
         } catch (_: Exception) {
             null
