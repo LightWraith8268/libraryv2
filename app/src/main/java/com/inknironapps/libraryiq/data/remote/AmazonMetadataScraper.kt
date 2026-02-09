@@ -43,10 +43,22 @@ class AmazonMetadataScraper @Inject constructor() {
 
             val html = fetchPage(url) ?: return@withContext null
 
-            // Extract ASIN from first search result link
-            val asin = extractFirstAsin(html)
-            if (asin != null) {
-                DebugLog.d(TAG, "Found ASIN: $asin, fetching product page")
+            // Extract all unique ASINs from search results
+            val asins = extractAllAsins(html)
+            DebugLog.d(TAG, "Found ${asins.size} ASINs: ${asins.take(5)}")
+
+            // Try non-B ASINs first (physical books use ISBN-10 as ASIN)
+            for (asin in asins) {
+                if (asin.startsWith("B")) continue
+                DebugLog.d(TAG, "Trying physical ASIN: $asin")
+                val productBook = fetchProductPage(asin, isbn)
+                if (productBook != null) return@withContext productBook
+            }
+
+            // Then try B-ASINs (some physical books only have B-ASINs)
+            for (asin in asins) {
+                if (!asin.startsWith("B")) continue
+                DebugLog.d(TAG, "Trying B-ASIN: $asin")
                 val productBook = fetchProductPage(asin, isbn)
                 if (productBook != null) return@withContext productBook
             }
@@ -96,30 +108,44 @@ class AmazonMetadataScraper @Inject constructor() {
         return parseProductPage(html, isbn)
     }
 
-    private fun extractFirstAsin(html: String): String? {
+    private fun extractAllAsins(html: String): List<String> {
         val dpRegex = """/dp/([A-Z0-9]{10})""".toRegex()
-        return dpRegex.find(html)?.groupValues?.get(1)
+        return dpRegex.findAll(html)
+            .map { it.groupValues[1] }
+            .distinct()
+            .take(5) // limit to avoid too many requests
+            .toList()
     }
 
     // --- Search Results Parsing (fallback if product page fails) ---
 
     private fun parseSearchResults(html: String, isbn: String): Book? {
-        val title = extractSearchTitle(html)
+        val rawTitle = extractSearchTitle(html)
         val author = extractSearchAuthor(html)
         val imageUrl = extractSearchImage(html)
 
-        if (title == null) {
+        if (rawTitle == null) {
             DebugLog.d(TAG, "No title found in search results")
             return null
         }
 
-        DebugLog.d(TAG, "Search parsed: '$title' by '$author', image=${imageUrl != null}")
+        // Extract series from title like "Fleet School Dropout (Warborn Protocols Book 1)"
+        val seriesInfo = extractSeriesFromText(rawTitle)
+        // Clean the title: remove series parenthetical
+        val title = rawTitle
+            .replace(Regex("""\s*\([^)]*\)\s*$"""), "")
+            .trim()
+
+        DebugLog.d(TAG, "Search parsed: '$title' by '$author', image=${imageUrl != null}, " +
+            "series=${seriesInfo?.first} #${seriesInfo?.second}")
 
         return Book(
             title = cleanTitle(title),
             author = author ?: "Unknown Author",
             isbn = isbn,
-            coverUrl = imageUrl
+            coverUrl = imageUrl,
+            series = seriesInfo?.first,
+            seriesNumber = seriesInfo?.second
         )
     }
 
