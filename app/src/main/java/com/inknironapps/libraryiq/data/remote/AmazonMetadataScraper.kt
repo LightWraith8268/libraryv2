@@ -175,8 +175,13 @@ class AmazonMetadataScraper @Inject constructor() {
         val pages = extractPageCount(html)
         val pubDate = extractDetailBullet(html, "Publication date")
 
+        // Extract series from title tag parts or from product page HTML
+        val seriesInfo = extractSeriesFromTitleParts(titleTagResult?.third)
+            ?: extractSeriesFromHtml(html)
+
         DebugLog.d(TAG, "Product page: '$title' by '$author', " +
-            "image=${imageUrl != null}, pages=$pages, publisher=$publisher")
+            "image=${imageUrl != null}, pages=$pages, publisher=$publisher, " +
+            "series=${seriesInfo?.first} #${seriesInfo?.second}")
 
         return Book(
             title = cleanTitle(title),
@@ -186,16 +191,18 @@ class AmazonMetadataScraper @Inject constructor() {
             coverUrl = imageUrl,
             pageCount = pages,
             publisher = publisher,
-            publishedDate = pubDate
+            publishedDate = pubDate,
+            series = seriesInfo?.first,
+            seriesNumber = seriesInfo?.second
         )
     }
 
     /**
      * Parses the HTML <title> tag which is the most reliable metadata source.
      * Amazon format: "Book Title: Author Last, First: ISBN: Amazon.com: Books"
-     * Returns Pair(title, author) or null.
+     * Returns Triple(title, author, allMeaningfulParts) or null.
      */
-    private fun parseHtmlTitleTag(html: String): Pair<String, String?>? {
+    private fun parseHtmlTitleTag(html: String): Triple<String, String?, List<String>>? {
         val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
         val rawTitle = titleRegex.find(html)?.groupValues?.get(1)?.trim() ?: return null
 
@@ -219,20 +226,24 @@ class AmazonMetadataScraper @Inject constructor() {
 
         val bookTitle = meaningful.first()
 
-        // Author is usually the second meaningful part (if it looks like a name)
-        val authorCandidate = meaningful.getOrNull(1)
-        val author = if (authorCandidate != null && isValidAuthor(authorCandidate) &&
-            !authorCandidate.equals(bookTitle, ignoreCase = true)) {
-            // Amazon uses "Last, First" format - flip to "First Last"
-            if (authorCandidate.contains(",")) {
-                authorCandidate.split(",").map { it.trim() }.reversed().joinToString(" ")
-            } else {
-                authorCandidate
+        // Author is usually the LAST meaningful part (after title, subtitle, edition info)
+        // Search backwards for the first part that looks like an author name
+        var author: String? = null
+        for (i in meaningful.lastIndex downTo 1) {
+            val candidate = meaningful[i]
+            if (isValidAuthor(candidate) && !candidate.equals(bookTitle, ignoreCase = true)) {
+                // Amazon uses "Last, First" format - flip to "First Last"
+                author = if (candidate.contains(",")) {
+                    candidate.split(",").map { it.trim() }.reversed().joinToString(" ")
+                } else {
+                    candidate
+                }
+                break
             }
-        } else null
+        }
 
         DebugLog.d(TAG, "Title tag parsed: '$bookTitle' by '$author' (raw: '$rawTitle')")
-        return Pair(bookTitle, author)
+        return Triple(bookTitle, author, meaningful)
     }
 
     private fun extractProductTitleFromHtml(html: String): String? {
@@ -325,6 +336,93 @@ class AmazonMetadataScraper @Inject constructor() {
         return pagesRegex.find(html)?.groupValues?.get(1)?.toIntOrNull()
     }
 
+    // --- Series extraction ---
+
+    /**
+     * Extracts series info from Amazon title tag parts.
+     * Looks for patterns like "A Novel (The Maple Hills)" or "(Series Name, #2)"
+     */
+    private fun extractSeriesFromTitleParts(parts: List<String>?): Pair<String, String?>? {
+        if (parts == null) return null
+        for (part in parts) {
+            val seriesMatch = extractSeriesFromText(part)
+            if (seriesMatch != null) return seriesMatch
+        }
+        return null
+    }
+
+    /**
+     * Extracts series name and number from text patterns like:
+     * "A Novel (The Maple Hills)" → "The Maple Hills"
+     * "(Series Name, #2)" → "Series Name" / "2"
+     * "(The Series Book 3)" → "The Series" / "3"
+     */
+    private fun extractSeriesFromText(text: String): Pair<String, String?>? {
+        // Pattern: (Series Name, #N) or (Series Name Book N)
+        val numberedRegex = """\(([^)]+?)(?:,\s*#?|,?\s+(?:Book|Volume|Vol\.?|#)\s*)(\d+)\)""".toRegex(RegexOption.IGNORE_CASE)
+        numberedRegex.find(text)?.let {
+            return Pair(it.groupValues[1].trim(), it.groupValues[2])
+        }
+
+        // Pattern: "A Novel (Series Name)" or just "(Series Name)"
+        val parenRegex = """\(([^)]{3,50})\)""".toRegex()
+        parenRegex.find(text)?.let { match ->
+            val candidate = match.groupValues[1].trim()
+            // Filter out things that aren't series names
+            if (!candidate.lowercase().let { c ->
+                c.startsWith("a novel") || c.startsWith("the ") ||
+                    c.contains("series") || c.contains("saga") ||
+                    c.contains("book ") || c.contains("trilogy")
+                || c.all { ch -> ch.isLetter() || ch.isWhitespace() || ch == '\'' }
+            }) return null
+
+            // "A Novel of The Maple Hills" → "The Maple Hills"
+            val cleaned = candidate
+                .replace(Regex("""^A\s+\w+\s+(?:of\s+|in\s+)?(?:the\s+)?""", RegexOption.IGNORE_CASE), "")
+                .trim()
+                .ifBlank { candidate }
+
+            // Extract number if present: "The Maple Hills Series 2" → "The Maple Hills Series" / "2"
+            val numRegex = """^(.+?)\s+(\d+)$""".toRegex()
+            numRegex.find(cleaned)?.let {
+                return Pair(it.groupValues[1].trim(), it.groupValues[2])
+            }
+
+            return Pair(cleaned, null)
+        }
+        return null
+    }
+
+    /**
+     * Extracts series info from Amazon product page HTML.
+     * Looks for the series link section on the page.
+     */
+    private fun extractSeriesFromHtml(html: String): Pair<String, String?>? {
+        // Pattern: "Book N of M: Series Name" or series section
+        val seriesLinkRegex = """id="seriesTitle"[^>]*>.*?<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val seriesName = seriesLinkRegex.find(html)?.groupValues?.get(1)?.trim()
+
+        // Pattern for "Book N" number
+        val bookNumRegex = """(?:Book|Volume|Part)\s+(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+        val seriesNumber = if (seriesName != null) {
+            // Look near the series title for the book number
+            val seriesSection = html.substringAfter("seriesTitle", "").take(500)
+            bookNumRegex.find(seriesSection)?.groupValues?.get(1)
+        } else null
+
+        if (seriesName != null) return Pair(seriesName, seriesNumber)
+
+        // Alternative: "Part of: <a>Series Name</a>" pattern
+        val partOfRegex = """(?:Part of|Series):\s*<a[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
+        val partOf = partOfRegex.find(html)?.groupValues?.get(1)?.trim()
+        if (partOf != null) {
+            val num = bookNumRegex.find(html.substringAfter(partOf, "").take(200))?.groupValues?.get(1)
+            return Pair(partOf, num)
+        }
+
+        return null
+    }
+
     // --- Utility methods ---
 
     private fun isValidTitle(text: String): Boolean {
@@ -346,8 +444,13 @@ class AmazonMetadataScraper @Inject constructor() {
             !lower.contains("learn more") &&
             !lower.contains("click here") &&
             !lower.contains("amazon") &&
+            !lower.contains("novel") &&
+            !lower.contains("hardcover") &&
+            !lower.contains("paperback") &&
+            !lower.startsWith("a ") &&
             !lower.startsWith("@") &&
-            !lower.startsWith("http")
+            !lower.startsWith("http") &&
+            !lower.startsWith("(") // parenthetical like "(The Series)"
     }
 
     private fun extractMeta(html: String, property: String): String? {
