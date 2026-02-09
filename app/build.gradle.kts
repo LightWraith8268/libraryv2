@@ -17,8 +17,8 @@ plugins {
 // increment it with every release regardless of version numbers.
 val versionMajor = 1
 val versionMinor = 3
-val versionPatch = 0
-val versionBuild = 1  // Bump this with every release
+val versionPatch = 8
+val versionBuild = 9  // Bump this with every release
 
 android {
     namespace = "com.inknironapps.libraryiq"
