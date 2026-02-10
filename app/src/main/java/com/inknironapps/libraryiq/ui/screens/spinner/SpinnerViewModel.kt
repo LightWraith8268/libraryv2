@@ -43,7 +43,7 @@ private const val KEY_AUTO_MARK_READING = "auto_mark_reading"
 private const val KEY_AUTO_REMOVE = "auto_remove"
 private const val KEY_MANUAL_BOOK_IDS = "manual_book_ids"
 private const val KEY_EXCLUDED_BOOK_IDS = "excluded_book_ids"
-private const val MAX_WHEEL_SEGMENTS = 20
+private const val MAX_WHEEL_SEGMENTS = 36
 
 @HiltViewModel
 class SpinnerViewModel @Inject constructor(
