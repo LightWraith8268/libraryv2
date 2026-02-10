@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.StarHalf
@@ -55,13 +56,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
+import com.inknironapps.libraryiq.ui.components.CoverPickerDialog
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
+import com.inknironapps.libraryiq.ui.navigation.Screen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -144,12 +148,44 @@ fun BookDetailScreen(
                     if (!book.coverUrl.isNullOrBlank()) {
                         AsyncImage(
                             model = book.coverUrl,
-                            contentDescription = "Cover",
+                            contentDescription = "Cover - tap to change",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(width = 120.dp, height = 180.dp)
                                 .clip(MaterialTheme.shapes.medium)
+                                .clickable { viewModel.openCoverPicker() }
                         )
+                        Spacer(modifier = Modifier.width(16.dp))
+                    } else {
+                        // Placeholder: tap to search for covers
+                        Card(
+                            modifier = Modifier
+                                .size(width = 120.dp, height = 180.dp)
+                                .clickable { viewModel.openCoverPicker() },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Image,
+                                    contentDescription = "Add cover",
+                                    modifier = Modifier.size(32.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Tap to find\na cover",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(16.dp))
                     }
 
@@ -176,7 +212,12 @@ fun BookDetailScreen(
                             Text(
                                 text = book.author,
                                 style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable {
+                                    navController.navigate(
+                                        Screen.Library.createRoute(filterAuthor = book.author)
+                                    )
+                                }
                             )
 
                             // Series info
@@ -190,7 +231,12 @@ fun BookDetailScreen(
                                         }
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.clickable {
+                                        navController.navigate(
+                                            Screen.Library.createRoute(filterSeries = book.series)
+                                        )
+                                    }
                                 )
                             }
                         }
@@ -314,15 +360,31 @@ fun BookDetailScreen(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        MetadataRow("Author", book.author)
+                        ClickableMetadataRow(
+                            label = "Author",
+                            value = book.author,
+                            onClick = {
+                                navController.navigate(
+                                    Screen.Library.createRoute(filterAuthor = book.author)
+                                )
+                            }
+                        )
 
                         if (!book.series.isNullOrBlank()) {
-                            MetadataRow("Series", buildString {
-                                append(book.series)
-                                if (!book.seriesNumber.isNullOrBlank()) {
-                                    append(" #${book.seriesNumber}")
+                            ClickableMetadataRow(
+                                label = "Series",
+                                value = buildString {
+                                    append(book.series)
+                                    if (!book.seriesNumber.isNullOrBlank()) {
+                                        append(" #${book.seriesNumber}")
+                                    }
+                                },
+                                onClick = {
+                                    navController.navigate(
+                                        Screen.Library.createRoute(filterSeries = book.series)
+                                    )
                                 }
-                            })
+                            )
                         }
 
                         book.publisher?.let { MetadataRow("Publisher", it) }
@@ -550,6 +612,17 @@ fun BookDetailScreen(
         )
     }
 
+    // Cover picker dialog
+    if (uiState.showCoverPicker) {
+        CoverPickerDialog(
+            covers = uiState.coverOptions,
+            isLoading = uiState.isFetchingCovers,
+            currentCoverUrl = book?.coverUrl,
+            onCoverSelected = { url -> viewModel.selectCover(url) },
+            onDismiss = { viewModel.closeCoverPicker() }
+        )
+    }
+
     // Current page dialog
     if (showPageDialog) {
         var pageText by remember { mutableStateOf(book?.currentPage?.toString() ?: "") }
@@ -635,6 +708,27 @@ private fun MetadataRow(label: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun ClickableMetadataRow(label: String, value: String, onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(90.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
         )
     }
 }

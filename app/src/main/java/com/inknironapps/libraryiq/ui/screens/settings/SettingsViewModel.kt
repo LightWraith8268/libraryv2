@@ -10,6 +10,7 @@ import com.inknironapps.libraryiq.R
 import com.inknironapps.libraryiq.data.billing.BillingManager
 import com.inknironapps.libraryiq.data.local.AppDatabase
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
+import com.inknironapps.libraryiq.ui.screens.library.LibraryPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,7 @@ class SettingsViewModel @Inject constructor(
     private val firestoreSync: FirestoreSync,
     private val billingManager: BillingManager,
     private val database: AppDatabase,
+    val libraryPreferences: LibraryPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 

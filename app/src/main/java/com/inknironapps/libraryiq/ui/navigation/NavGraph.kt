@@ -38,11 +38,12 @@ import com.inknironapps.libraryiq.ui.screens.spinner.SpinnerScreen
 data class BottomNavItem(
     val screen: Screen,
     val label: String,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val baseRoute: String = screen.route
 )
 
 val bottomNavItems = listOf(
-    BottomNavItem(Screen.Library, "Library", Icons.Default.LibraryBooks),
+    BottomNavItem(Screen.Library, "Library", Icons.Default.LibraryBooks, Screen.Library.BASE_ROUTE),
     BottomNavItem(Screen.Spinner, "Spinner", Icons.Default.Casino),
     BottomNavItem(Screen.Collections, "Collections", Icons.Default.CollectionsBookmark),
     BottomNavItem(Screen.Settings, "Settings", Icons.Default.Settings)
@@ -74,7 +75,7 @@ fun AppNavigation() {
                                 it.route == item.screen.route
                             } == true,
                             onClick = {
-                                navController.navigate(item.screen.route) {
+                                navController.navigate(item.baseRoute) {
                                     popUpTo(navController.graph.findStartDestination().id) {
                                         saveState = true
                                     }
@@ -90,10 +91,24 @@ fun AppNavigation() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Library.route,
+            startDestination = Screen.Library.BASE_ROUTE,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Library.route) {
+            composable(
+                route = Screen.Library.route,
+                arguments = listOf(
+                    navArgument("filterAuthor") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("filterSeries") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
                 LibraryScreen(navController = navController)
             }
 

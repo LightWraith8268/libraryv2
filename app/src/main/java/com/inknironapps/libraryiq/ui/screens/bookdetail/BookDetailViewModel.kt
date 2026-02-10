@@ -7,6 +7,7 @@ import com.inknironapps.libraryiq.data.local.entity.Collection
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.data.repository.BookRepository
 import com.inknironapps.libraryiq.data.repository.CollectionRepository
+import com.inknironapps.libraryiq.data.repository.CoverOption
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,11 @@ data class BookDetailUiState(
     val editTitle: String = "",
     val editAuthor: String = "",
     val editNotes: String = "",
-    val editTags: String = ""
+    val editTags: String = "",
+    // Cover picker
+    val showCoverPicker: Boolean = false,
+    val coverOptions: List<CoverOption> = emptyList(),
+    val isFetchingCovers: Boolean = false
 )
 
 @HiltViewModel
@@ -198,6 +203,38 @@ class BookDetailViewModel @Inject constructor(
 
     fun clearRefreshMessage() {
         _uiState.value = _uiState.value.copy(refreshMessage = null)
+    }
+
+    fun openCoverPicker() {
+        val book = _uiState.value.book ?: return
+        _uiState.value = _uiState.value.copy(
+            showCoverPicker = true,
+            coverOptions = emptyList(),
+            isFetchingCovers = true
+        )
+        viewModelScope.launch {
+            try {
+                val covers = bookRepository.fetchAllCovers(book.isbn, book.title, book.author)
+                _uiState.value = _uiState.value.copy(
+                    coverOptions = covers,
+                    isFetchingCovers = false
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isFetchingCovers = false)
+            }
+        }
+    }
+
+    fun closeCoverPicker() {
+        _uiState.value = _uiState.value.copy(showCoverPicker = false)
+    }
+
+    fun selectCover(url: String) {
+        val book = _uiState.value.book ?: return
+        _uiState.value = _uiState.value.copy(showCoverPicker = false)
+        viewModelScope.launch {
+            bookRepository.updateBook(book.copy(coverUrl = url))
+        }
     }
 
     fun deleteBook() {

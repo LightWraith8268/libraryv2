@@ -43,7 +43,7 @@ private const val KEY_AUTO_MARK_READING = "auto_mark_reading"
 private const val KEY_AUTO_REMOVE = "auto_remove"
 private const val KEY_MANUAL_BOOK_IDS = "manual_book_ids"
 private const val KEY_EXCLUDED_BOOK_IDS = "excluded_book_ids"
-private const val MAX_WHEEL_SEGMENTS = 20
+private const val MAX_WHEEL_SEGMENTS = 36
 
 @HiltViewModel
 class SpinnerViewModel @Inject constructor(
@@ -84,7 +84,7 @@ class SpinnerViewModel @Inject constructor(
                 _excludedBookIds
             ) { allBooks, statuses, manual, manualIds, excludedIds ->
                 val eligible = filterBooks(allBooks, statuses, manual, manualIds, excludedIds)
-                val wheel = buildWheel(eligible, null)
+                val wheel = buildWheel(eligible)
                 Triple(allBooks, eligible, wheel)
             }.collect { (allBooks, eligible, wheel) ->
                 _uiState.update {
@@ -110,8 +110,7 @@ class SpinnerViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         selectedBook = eligible.first(),
-                        showResult = true,
-                        wheelBooks = eligible
+                        showResult = true
                     )
                 }
             }
@@ -121,18 +120,13 @@ class SpinnerViewModel @Inject constructor(
         val winner = eligible.random()
         currentWinner = winner
 
-        val wheel = buildWheel(eligible, winner)
-        val winnerIndex = wheel.indexOfFirst { it.id == winner.id }
-        val segmentAngle = 360f / wheel.size
-
-        val winnerCenterAngle = winnerIndex * segmentAngle + segmentAngle / 2f
-        val baseRotation = 360f - winnerCenterAngle
+        // Wheel is purely decorative — just spin a random amount
         val fullSpins = (5 + Random.nextInt(4)) * 360f
-        val targetRotation = fullSpins + baseRotation
+        val randomOffset = Random.nextFloat() * 360f
+        val targetRotation = fullSpins + randomOffset
 
         _uiState.update {
             it.copy(
-                wheelBooks = wheel,
                 isSpinning = true,
                 spinTrigger = it.spinTrigger + 1,
                 targetRotation = targetRotation,
@@ -255,14 +249,8 @@ class SpinnerViewModel @Inject constructor(
         return base.filter { it.id !in excludedIds }
     }
 
-    private fun buildWheel(eligible: List<Book>, winner: Book?): List<Book> {
-        if (eligible.size <= MAX_WHEEL_SEGMENTS) {
-            return eligible.shuffled()
-        }
-        val others = eligible.filter { it.id != winner?.id }.shuffled()
-            .take(MAX_WHEEL_SEGMENTS - 1)
-        val wheel = if (winner != null) others + winner else others.take(MAX_WHEEL_SEGMENTS)
-        return wheel.shuffled()
+    private fun buildWheel(eligible: List<Book>): List<Book> {
+        return eligible.shuffled().take(MAX_WHEEL_SEGMENTS)
     }
 
     private fun loadStatusFilters(): Set<ReadingStatus> {

@@ -60,15 +60,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -260,23 +256,13 @@ private fun SpinnerWheel(
     rotationDegrees: Float,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
-    val baseTextSizePx = with(density) { 12.sp.toPx() }
-
     Canvas(modifier = modifier) {
         val radius = size.minDimension / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
         val segmentAngle = 360f / books.size
 
-        val textSizePx = when {
-            books.size <= 8 -> baseTextSizePx
-            books.size <= 12 -> baseTextSizePx * 0.85f
-            books.size <= 16 -> baseTextSizePx * 0.72f
-            else -> baseTextSizePx * 0.6f
-        }
-
         rotate(degrees = rotationDegrees, pivot = center) {
-            books.forEachIndexed { index, book ->
+            books.forEachIndexed { index, _ ->
                 val startAngle = index * segmentAngle - 90f
                 val color = WheelColors[index % WheelColors.size]
 
@@ -296,17 +282,7 @@ private fun SpinnerWheel(
                     useCenter = true,
                     topLeft = Offset(center.x - radius, center.y - radius),
                     size = Size(radius * 2, radius * 2),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
-                )
-
-                drawSegmentText(
-                    text = book.title,
-                    centerX = center.x,
-                    centerY = center.y,
-                    radius = radius,
-                    angle = startAngle + segmentAngle / 2f,
-                    textSize = textSizePx,
-                    segmentAngle = segmentAngle
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f)
                 )
             }
 
@@ -322,53 +298,6 @@ private fun SpinnerWheel(
             )
         }
     }
-}
-
-private fun DrawScope.drawSegmentText(
-    text: String,
-    centerX: Float,
-    centerY: Float,
-    radius: Float,
-    angle: Float,
-    textSize: Float,
-    segmentAngle: Float
-) {
-    val paint = android.graphics.Paint().apply {
-        color = android.graphics.Color.WHITE
-        this.textSize = textSize
-        isAntiAlias = true
-        isFakeBoldText = true
-        setShadowLayer(2f, 1f, 1f, android.graphics.Color.argb(128, 0, 0, 0))
-    }
-
-    val maxChars = when {
-        segmentAngle < 15f -> 5
-        segmentAngle < 20f -> 8
-        segmentAngle < 30f -> 12
-        segmentAngle < 45f -> 16
-        else -> 20
-    }
-    val truncated = if (text.length > maxChars) text.take(maxChars - 1) + "\u2026" else text
-
-    drawContext.canvas.nativeCanvas.save()
-    drawContext.canvas.nativeCanvas.translate(centerX, centerY)
-    drawContext.canvas.nativeCanvas.rotate(angle + 90f)
-
-    val textWidth = paint.measureText(truncated)
-    val xOffset = radius * 0.25f
-    val maxTextWidth = radius * 0.65f
-    if (textWidth > maxTextWidth) {
-        paint.textSize = textSize * (maxTextWidth / textWidth)
-    }
-
-    drawContext.canvas.nativeCanvas.drawText(
-        truncated,
-        xOffset,
-        paint.textSize / 3f,
-        paint
-    )
-
-    drawContext.canvas.nativeCanvas.restore()
 }
 
 @Composable

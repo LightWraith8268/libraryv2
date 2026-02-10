@@ -1,7 +1,15 @@
 package com.inknironapps.libraryiq.ui.navigation
 
 sealed class Screen(val route: String) {
-    data object Library : Screen("library")
+    data object Library : Screen("library?filterAuthor={filterAuthor}&filterSeries={filterSeries}") {
+        const val BASE_ROUTE = "library"
+        fun createRoute(filterAuthor: String? = null, filterSeries: String? = null): String {
+            val params = mutableListOf<String>()
+            filterAuthor?.let { params.add("filterAuthor=${android.net.Uri.encode(it)}") }
+            filterSeries?.let { params.add("filterSeries=${android.net.Uri.encode(it)}") }
+            return if (params.isEmpty()) BASE_ROUTE else "$BASE_ROUTE?${params.joinToString("&")}"
+        }
+    }
     data object Spinner : Screen("spinner")
     data object Collections : Screen("collections")
     data object Settings : Screen("settings")

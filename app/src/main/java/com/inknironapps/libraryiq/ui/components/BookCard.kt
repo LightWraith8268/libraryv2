@@ -36,7 +36,9 @@ import com.inknironapps.libraryiq.ui.theme.StatusWantToRead
 fun BookCard(
     book: Book,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showCover: Boolean = true,
+    compact: Boolean = false
 ) {
     Card(
         modifier = modifier
@@ -47,41 +49,47 @@ fun BookCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(if (compact) 8.dp else 12.dp),
             verticalAlignment = Alignment.Top
         ) {
             // Cover image
-            AsyncImage(
-                model = book.coverUrl,
-                contentDescription = "Cover of ${book.title}",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(width = 60.dp, height = 90.dp)
-                    .clip(MaterialTheme.shapes.small)
-            )
+            if (showCover) {
+                AsyncImage(
+                    model = book.coverUrl,
+                    contentDescription = "Cover of ${book.title}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(
+                            width = if (compact) 40.dp else 60.dp,
+                            height = if (compact) 60.dp else 90.dp
+                        )
+                        .clip(MaterialTheme.shapes.small)
+                )
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))
+            }
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)
             ) {
                 Text(
                     text = book.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
+                    style = if (compact) MaterialTheme.typography.bodyMedium
+                    else MaterialTheme.typography.titleMedium,
+                    maxLines = if (compact) 1 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
 
                 Text(
                     text = book.author,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (book.series != null) {
+                if (!compact && book.series != null) {
                     val seriesText = buildString {
                         append(book.series)
                         if (book.seriesNumber != null) {
@@ -97,7 +105,9 @@ fun BookCard(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                if (!compact) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
 
                 val statusColor = when (book.readingStatus) {
                     ReadingStatus.READING -> StatusReading
