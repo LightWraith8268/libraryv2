@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -41,6 +42,30 @@ data class BottomNavItem(
     val icon: ImageVector,
     val baseRoute: String = screen.route
 )
+
+/**
+ * Safe bottom-tab navigation that won't crash on back stack edge cases.
+ * Falls back to a plain navigate if popUpTo fails.
+ */
+private fun NavController.navigateSafe(route: String) {
+    try {
+        navigate(route) {
+            popUpTo(graph.findStartDestination().id) {
+                inclusive = false
+            }
+            launchSingleTop = true
+        }
+    } catch (_: Exception) {
+        // Fallback: navigate without popUpTo if back stack is in a bad state
+        try {
+            navigate(route) {
+                launchSingleTop = true
+            }
+        } catch (_: Exception) {
+            // Last resort: ignore — stay on current screen rather than crash
+        }
+    }
+}
 
 val bottomNavItems = listOf(
     BottomNavItem(Screen.Library, "Library", Icons.Default.LibraryBooks, Screen.Library.BASE_ROUTE),
@@ -75,12 +100,7 @@ fun AppNavigation() {
                                 it.route == item.screen.route
                             } == true,
                             onClick = {
-                                navController.navigate(item.baseRoute) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        inclusive = false
-                                    }
-                                    launchSingleTop = true
-                                }
+                                navController.navigateSafe(item.baseRoute)
                             }
                         )
                     }
