@@ -93,3 +93,11 @@
 -keepattributes *Annotation*
 -dontwarn javax.annotation.**
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
+
+# --- Diagnostic: preserve class/method names for crash-prone libraries ---
+# Prevents R8 from obfuscating these packages so stack traces are human-readable.
+# Does NOT affect shrinking (unused code is still removed) — only naming.
+-keepnames class androidx.navigation.** { *; }
+-keepnames class androidx.lifecycle.** { *; }
+-keepnames class androidx.hilt.** { *; }
+-keepnames class androidx.compose.foundation.** { *; }
