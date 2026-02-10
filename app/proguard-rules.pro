@@ -4,16 +4,25 @@
 # Keep API models (Google Books, Open Library, Hardcover, Amazon)
 -keep class com.inknironapps.libraryiq.data.remote.** { *; }
 
-# Keep Hilt generated classes
+# Keep Hilt framework classes
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
+-keep class dagger.hilt.android.internal.** { *; }
 
-# Keep Hilt ViewModels — R8 renames ViewModel classes, breaking hiltViewModel() lookup
--keep @dagger.hilt.android.lifecycle.HiltViewModel class * extends androidx.lifecycle.ViewModel { *; }
+# Keep ALL ViewModels and their constructors — prevents R8 renaming that breaks
+# Hilt's string-key based ViewModel factory lookup in hiltViewModel()
+-keep class * extends androidx.lifecycle.ViewModel { *; }
+-keepnames class * extends androidx.lifecycle.ViewModel
 
-# Keep Hilt entry points and generated components
--keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
--keep class com.inknironapps.libraryiq.** extends androidx.lifecycle.ViewModel { *; }
+# Keep Hilt-generated ViewModel modules and Dagger factories
+-keep class **_HiltModules* { *; }
+-keep class **_Factory { *; }
+-keep class **_GeneratedInjector { *; }
+-keep class com.inknironapps.libraryiq.Hilt_* { *; }
+
+# Keep Hilt component interfaces
+-keep class * implements dagger.hilt.internal.GeneratedComponent { *; }
+-keep class * implements dagger.hilt.internal.GeneratedComponentManager { *; }
 
 # --- Retrofit ---
 # Retrofit does reflection on generic parameters. InnerClasses is required to use Signature and
