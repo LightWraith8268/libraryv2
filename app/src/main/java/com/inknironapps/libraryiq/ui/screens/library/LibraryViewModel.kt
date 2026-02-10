@@ -88,7 +88,7 @@ class LibraryViewModel @Inject constructor(
             result = result.filter { it.author.equals(author, ignoreCase = true) }
         }
         if (series != null) {
-            result = result.filter { it.series.equals(series, ignoreCase = true) }
+            result = result.filter { it.series?.equals(series, ignoreCase = true) == true }
         }
         if (statusFilter != null) {
             result = result.filter { it.readingStatus == statusFilter }
