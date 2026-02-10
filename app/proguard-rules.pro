@@ -14,8 +14,18 @@
 -keep class * extends androidx.lifecycle.ViewModel { *; }
 -keepnames class * extends androidx.lifecycle.ViewModel
 
-# Keep Hilt-generated ViewModel modules and Dagger factories
--keep class **_HiltModules* { *; }
+# Keep ALL Dagger @Module classes (including Hilt-generated ones) — in R8 full mode
+# (default in AGP 8+), R8 can strip @Provides/@Binds methods from generated modules
+# like XxxViewModel_HiltModules$KeyModule, breaking the multibinding map that
+# hiltViewModel() relies on to find ViewModels at runtime.
+-keep @dagger.Module class * { *; }
+-keep @dagger.hilt.InstallIn class * { *; }
+
+# Keep Hilt-generated ViewModel modules and their inner classes explicitly.
+# The $* pattern ensures inner classes (KeyModule, BindsModule) are kept even
+# if '*' alone doesn't match '$' in this R8 version.
+-keep class **_HiltModules { *; }
+-keep class **_HiltModules$* { *; }
 -keep class **_Factory { *; }
 -keep class **_GeneratedInjector { *; }
 -keep class com.inknironapps.libraryiq.Hilt_* { *; }
@@ -23,6 +33,10 @@
 # Keep Hilt component interfaces
 -keep class * implements dagger.hilt.internal.GeneratedComponent { *; }
 -keep class * implements dagger.hilt.internal.GeneratedComponentManager { *; }
+
+# Keep Hilt ViewModel factory and map infrastructure
+-keep class dagger.hilt.android.internal.lifecycle.** { *; }
+-keep class androidx.hilt.** { *; }
 
 # --- Retrofit ---
 # Retrofit does reflection on generic parameters. InnerClasses is required to use Signature and
