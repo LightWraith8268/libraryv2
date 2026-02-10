@@ -8,6 +8,13 @@
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
 
+# Keep Hilt ViewModels — R8 renames ViewModel classes, breaking hiltViewModel() lookup
+-keep @dagger.hilt.android.lifecycle.HiltViewModel class * extends androidx.lifecycle.ViewModel { *; }
+
+# Keep Hilt entry points and generated components
+-keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
+-keep class com.inknironapps.libraryiq.** extends androidx.lifecycle.ViewModel { *; }
+
 # --- Retrofit ---
 # Retrofit does reflection on generic parameters. InnerClasses is required to use Signature and
 # EnclosingMethod is required to use InnerClasses.
