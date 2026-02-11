@@ -2,7 +2,9 @@ package com.inknironapps.libraryiq.data.repository
 
 import com.inknironapps.libraryiq.BuildConfig
 import com.inknironapps.libraryiq.data.local.dao.BookDao
+import com.inknironapps.libraryiq.data.local.dao.CollectionDao
 import com.inknironapps.libraryiq.data.local.entity.Book
+import com.inknironapps.libraryiq.data.local.entity.BookCollectionCrossRef
 import com.inknironapps.libraryiq.data.local.entity.BookWithCollections
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.data.remote.AmazonMetadataScraper
@@ -34,6 +36,7 @@ data class CoverOption(
 @Singleton
 class BookRepository @Inject constructor(
     private val bookDao: BookDao,
+    private val collectionDao: CollectionDao,
     private val bookApiService: BookApiService,
     private val openLibraryApiService: OpenLibraryApiService,
     private val hardcoverApiService: HardcoverApiService,
@@ -71,6 +74,22 @@ class BookRepository @Inject constructor(
         val updated = book.copy(dateModified = System.currentTimeMillis())
         bookDao.updateBook(updated)
         firestoreSync.pushUserStatus(updated)
+
+        // Auto-manage "Want to Buy" collection membership
+        try {
+            val wantToBuy = collectionDao.getCollectionByName("Want to Buy")
+            if (wantToBuy != null) {
+                val isInCollection = collectionDao.isBookInCollection(book.id, wantToBuy.id)
+                if (updated.readingStatus == ReadingStatus.WANT_TO_BUY && !isInCollection) {
+                    val crossRef = BookCollectionCrossRef(book.id, wantToBuy.id)
+                    collectionDao.addBookToCollection(crossRef)
+                    firestoreSync.pushBookCollectionRef(crossRef)
+                } else if (updated.readingStatus != ReadingStatus.WANT_TO_BUY && isInCollection) {
+                    collectionDao.removeBookFromCollectionById(book.id, wantToBuy.id)
+                    firestoreSync.deleteBookCollectionRef(book.id, wantToBuy.id)
+                }
+            }
+        } catch (_: Exception) { }
     }
 
     suspend fun deleteBook(book: Book) {

@@ -52,4 +52,10 @@ interface CollectionDao {
 
     @Query("SELECT COUNT(*) FROM collections WHERE name = :name")
     suspend fun countByName(name: String): Int
+
+    @Query("SELECT * FROM collections WHERE name = :name LIMIT 1")
+    suspend fun getCollectionByName(name: String): Collection?
+
+    @Query("SELECT COUNT(*) > 0 FROM book_collection_cross_ref WHERE bookId = :bookId AND collectionId = :collectionId")
+    suspend fun isBookInCollection(bookId: String, collectionId: String): Boolean
 }

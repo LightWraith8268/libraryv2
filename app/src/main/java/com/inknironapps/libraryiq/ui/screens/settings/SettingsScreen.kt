@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import androidx.compose.material.icons.filled.SystemUpdate
 import com.inknironapps.libraryiq.util.DebugLog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,7 +112,8 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // --- Subscription Section ---
-            if (uiState.isSignedIn && !uiState.hasProAccess) {
+            // Show to signed-in users without Pro, but NOT to joined members (they sync free via creator's Pro)
+            if (uiState.isSignedIn && !uiState.hasProAccess && (!uiState.isSyncEnabled || uiState.isLibraryCreator)) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -132,13 +134,13 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Unlock Cloud Sync",
+                            text = "Unlock Multi-Device Sync",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Subscribe to create a library and sync across multiple devices. Invited members can join for free.",
+                            text = "Subscribe to sync your library across multiple devices and invite others to join.",
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -210,9 +212,7 @@ fun SettingsScreen(
                                 "Library syncs across devices in real-time"
                             else if (!uiState.isSignedIn)
                                 "Sign in to create or join a library"
-                            else if (!uiState.hasProAccess)
-                                "Subscribe to create a library, or join one for free"
-                            else "Create or join a library to sync",
+                            else "Create or join a library to get started",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -254,7 +254,7 @@ fun SettingsScreen(
             if (!uiState.isSignedIn) {
                 // --- Google Sign In ---
                 Text(
-                    text = "Sign in with your Google account. Subscribe to create a library, or join an existing one for free.",
+                    text = "Sign in with your Google account to create or join a library.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -327,7 +327,8 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Share this code with the other device",
+                                text = if (uiState.hasProAccess) "Share this code to sync with other devices"
+                                else "Subscribe to Pro to sync across devices",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -343,47 +344,39 @@ fun SettingsScreen(
                         Text("Leave Library")
                     }
                 } else {
-                    // No library yet - create (requires subscription) or join (free)
-                    if (uiState.hasProAccess) {
-                        Text(
-                            text = "Create a library or join an existing one to sync between devices.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // No library yet - create or join
+                    Text(
+                        text = "Create a new library or join an existing one with a code.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                        Button(
-                            onClick = viewModel::createLibrary,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !uiState.isLoading
-                        ) {
-                            if (uiState.isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Text("Create Library")
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HorizontalDivider(modifier = Modifier.weight(1f))
-                            Text(
-                                "  OR  ",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Button(
+                        onClick = viewModel::createLibrary,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading
+                    ) {
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
-                            HorizontalDivider(modifier = Modifier.weight(1f))
+                        } else {
+                            Text("Create Library")
                         }
-                    } else {
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(modifier = Modifier.weight(1f))
                         Text(
-                            text = "Join an existing library with a code, or subscribe to create your own.",
+                            "  OR  ",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        HorizontalDivider(modifier = Modifier.weight(1f))
                     }
 
                     OutlinedTextField(
@@ -619,6 +612,20 @@ fun SettingsScreen(
                 }
             }
 
+            OutlinedButton(
+                onClick = viewModel::checkForUpdate,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isCheckingUpdate
+            ) {
+                if (uiState.isCheckingUpdate) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                } else {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (uiState.isCheckingUpdate) "Checking..." else "Check for Updates")
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -642,5 +649,38 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+
+    // Update available dialog
+    uiState.updateInfo?.let { update ->
+        if (update.isNewer) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissUpdate,
+                title = { Text("Update Available") },
+                text = {
+                    Column {
+                        Text("Version ${update.versionName} is available (you have ${BuildConfig.VERSION_NAME}).")
+                        if (update.releaseNotes.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = update.releaseNotes.take(500),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = viewModel::downloadUpdate) {
+                        Text("Download & Install")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::dismissUpdate) {
+                        Text("Later")
+                    }
+                }
+            )
+        }
     }
 }
