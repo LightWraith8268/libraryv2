@@ -52,7 +52,8 @@ data class SettingsUiState(
     val isSideloaded: Boolean = false,
     val isRefreshingLibrary: Boolean = false,
     val refreshProgress: Int = 0,
-    val refreshTotal: Int = 0
+    val refreshTotal: Int = 0,
+    val updateMessage: String? = null
 )
 
 @HiltViewModel
@@ -389,16 +390,25 @@ class SettingsViewModel @Inject constructor(
 
     fun checkForUpdate() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isCheckingUpdate = true) }
-            val info = appUpdateManager.checkForUpdate()
-            _uiState.update {
-                it.copy(
-                    isCheckingUpdate = false,
-                    updateInfo = info,
-                    message = if (info == null) "Could not check for updates"
-                    else if (!info.isNewer) "You're on the latest version"
-                    else null
-                )
+            _uiState.update { it.copy(isCheckingUpdate = true, updateMessage = null) }
+            try {
+                val info = appUpdateManager.checkForUpdate()
+                _uiState.update {
+                    it.copy(
+                        isCheckingUpdate = false,
+                        updateInfo = info,
+                        updateMessage = if (info == null) "No updates available at this time"
+                        else if (!info.isNewer) "You're on the latest version"
+                        else null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isCheckingUpdate = false,
+                        updateMessage = "Could not check for updates: ${e.message}"
+                    )
+                }
             }
         }
     }

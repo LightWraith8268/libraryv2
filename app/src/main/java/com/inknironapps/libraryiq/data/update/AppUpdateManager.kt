@@ -114,7 +114,10 @@ class AppUpdateManager @Inject constructor(
 
             val body = response.body?.string() ?: return@withContext null
             val releases = JSONArray(body)
-            if (releases.length() == 0) return@withContext null
+            if (releases.length() == 0) {
+                DebugLog.d("AppUpdate", "No releases found for $repo")
+                return@withContext null
+            }
 
             val latest = releases.getJSONObject(0)
             val tagName = latest.getString("tag_name")
@@ -125,22 +128,30 @@ class AppUpdateManager @Inject constructor(
             val currentVersion = BuildConfig.VERSION_NAME
             val isNewer = isNewerVersion(remoteVersion, currentVersion)
 
-            // Find matching APK asset (debug or release)
+            // Find matching APK asset - prefer matching build type, fall back to any APK
             val buildType = if (BuildConfig.DEBUG) "debug" else "release"
             val assets = latest.getJSONArray("assets")
             var downloadUrl: String? = null
+            var fallbackUrl: String? = null
 
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val name = asset.getString("name")
-                if (name.endsWith(".apk") && name.contains(buildType)) {
-                    downloadUrl = asset.getString("browser_download_url")
-                    break
+                if (name.endsWith(".apk")) {
+                    if (name.contains(buildType)) {
+                        downloadUrl = asset.getString("browser_download_url")
+                        break
+                    }
+                    if (fallbackUrl == null) {
+                        fallbackUrl = asset.getString("browser_download_url")
+                    }
                 }
             }
 
+            // Use fallback APK if specific build type not found
+            downloadUrl = downloadUrl ?: fallbackUrl
             if (downloadUrl == null) {
-                DebugLog.d("AppUpdate", "No $buildType APK found in release $tagName")
+                DebugLog.d("AppUpdate", "No APK found in release $tagName")
                 return@withContext null
             }
 
