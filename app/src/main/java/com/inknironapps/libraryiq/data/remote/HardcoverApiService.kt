@@ -54,9 +54,11 @@ interface HardcoverApiService {
         fun buildTitleQuery(title: String): GraphQLRequest {
             // Query through editions table (which we have access to) with
             // a book title filter. Use _eq since _ilike is not permitted.
+            // Higher limit (10) to handle common titles like "Wildfire" where
+            // multiple different books share the same title.
             val query = """
                 query BookByTitle(${'$'}title: String!) {
-                    editions(where: {book: {title: {_eq: ${'$'}title}}}, limit: 3, order_by: {release_date: desc}) {
+                    editions(where: {book: {title: {_eq: ${'$'}title}}}, limit: 10, order_by: {release_date: desc}) {
                         isbn_13
                         isbn_10
                         pages

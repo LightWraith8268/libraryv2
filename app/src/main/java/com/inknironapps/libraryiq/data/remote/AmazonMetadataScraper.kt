@@ -331,11 +331,22 @@ class AmazonMetadataScraper @Inject constructor() {
         val titleSeries = extractSeriesFromTitleParts(titleTagResult?.third)
         val knownSeriesName = titleSeries?.first?.takeIf { it.isNotBlank() }
         val htmlSeries = extractSeriesFromHtml(html, knownSeriesName)
-        // Combine: prefer name from title-tag, number from whichever has it
+        // Also check the parsed product details map (catches cases where series is
+        // in the details table/bullets but not in structured HTML sections)
+        val detailSeriesRaw = details.getByKeys("Series", "Series Title")
+        val detailSeriesName = detailSeriesRaw
+            ?.replace(Regex("""\s*\([^)]*\)"""), "")?.trim()?.ifBlank { null }
+        val detailSeriesNumber = detailSeriesRaw?.let {
+            Regex("""\((?:Book|Vol\.?|#)\s*(\d+)\)""", RegexOption.IGNORE_CASE)
+                .find(it)?.groupValues?.get(1)
+        }
+        // Combine: prefer name from title-tag, then HTML, then details map
         val seriesName = knownSeriesName
             ?: htmlSeries?.first?.takeIf { it.isNotBlank() }
+            ?: detailSeriesName
         val seriesNumber = titleSeries?.second
             ?: htmlSeries?.second
+            ?: detailSeriesNumber
         val seriesInfo = if (seriesName != null) Pair(seriesName, seriesNumber) else null
 
         // Strip series parenthetical from title if we extracted it
@@ -1003,18 +1014,27 @@ class AmazonMetadataScraper @Inject constructor() {
         }
 
         // Pattern: "A Novel (Series Name)" or just "(Series Name)"
-        // Only extract as series if the text contains a clear series indicator keyword
+        // Accept parentheticals as series unless they match known non-series patterns
         val parenRegex = """\(([^)]{3,50})\)""".toRegex()
         parenRegex.find(text)?.let { match ->
             val candidate = match.groupValues[1].trim()
             val c = candidate.lowercase()
-            // Only accept as series if it contains a series-related keyword
-            val hasSeriesKeyword = c.contains("series") || c.contains("saga") ||
-                c.contains("book ") || c.contains("trilogy") ||
-                c.contains("chronicle") || c.contains("cycle") ||
-                c.contains("duology") || c.contains("quartet") ||
-                c.startsWith("a novel")
-            if (!hasSeriesKeyword) return null
+            // Reject known non-series parentheticals
+            val nonSeriesPatterns = listOf(
+                "a novel", "a thriller", "a memoir", "a romance", "a mystery",
+                "a fantasy", "a story", "novel", "reprint", "mass market",
+                "paperback", "hardcover", "audio", "audiobook", "large print",
+                "illustrated", "abridged", "unabridged", "revised", "updated",
+                "expanded", "annotated", "kindle", "ebook", "e-book",
+                "special edition", "anniversary edition", "collector's edition",
+                "deluxe edition", "limited edition", "first edition"
+            )
+            val isNotSeries = nonSeriesPatterns.any { pattern ->
+                c == pattern || c.startsWith("$pattern ") || c.startsWith("a ") && c.endsWith(" novel")
+            }
+            if (isNotSeries) return null
+            // Also reject if it's just a single common word (genre, format, etc.)
+            if (c.split(" ").size == 1 && c in listOf("novel", "fiction", "nonfiction", "memoir", "thriller", "romance", "mystery", "fantasy")) return null
 
             // "A Novel of The Maple Hills" -> "The Maple Hills"
             val cleaned = candidate

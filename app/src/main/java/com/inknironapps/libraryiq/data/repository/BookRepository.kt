@@ -444,12 +444,25 @@ class BookRepository @Inject constructor(
 
         // Hardcover title search (best source for series data)
         // Uses editions table with book title filter (same table as ISBN search)
+        // For common titles (e.g. "Wildfire"), multiple different books may share
+        // the same title — filter by author to pick the right one.
         if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
             try {
                 val response = hardcoverApiService.query(
                     HardcoverApiService.buildTitleQuery(baseTitle)
                 )
-                val bestMatch = response.data?.editions?.firstOrNull()
+                val editions = response.data?.editions.orEmpty()
+                // Prefer the edition whose author matches the known author
+                val bestMatch = if (author != "Unknown Author") {
+                    val normalizedAuthor = author.lowercase().trim()
+                    editions.firstOrNull { edition ->
+                        edition.book?.contributions?.any { contrib ->
+                            contrib.author?.name?.lowercase()?.trim() == normalizedAuthor
+                        } == true
+                    } ?: editions.firstOrNull()
+                } else {
+                    editions.firstOrNull()
+                }
                 if (bestMatch != null) {
                     val book = hardcoverEditionToBook(bestMatch, isbn)
                     DebugLog.d(TAG, "HC(title): '${book.title}' by ${book.author}, " +
