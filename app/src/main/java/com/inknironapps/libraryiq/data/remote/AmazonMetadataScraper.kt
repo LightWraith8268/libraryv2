@@ -215,9 +215,9 @@ class AmazonMetadataScraper @Inject constructor() {
     // =====================================================================
 
     private fun parseProductPage(html: String, isbn: String, asin: String): Book? {
-        // Skip eBooks / Kindle editions - only want physical books
-        if (isEbook(html)) {
-            DebugLog.d(TAG, "Skipping eBook/Kindle edition")
+        // Skip eBooks / Kindle / Audible editions - only want physical books
+        if (isNonPhysicalFormat(html)) {
+            DebugLog.d(TAG, "Skipping non-physical edition (eBook/Kindle/Audible)")
             return null
         }
 
@@ -844,16 +844,18 @@ class AmazonMetadataScraper @Inject constructor() {
         }
 
         // Pattern: "A Novel (Series Name)" or just "(Series Name)"
+        // Only extract as series if the text contains a clear series indicator keyword
         val parenRegex = """\(([^)]{3,50})\)""".toRegex()
         parenRegex.find(text)?.let { match ->
             val candidate = match.groupValues[1].trim()
-            // Filter out things that aren't series names
-            if (!candidate.lowercase().let { c ->
-                c.startsWith("a novel") || c.startsWith("the ") ||
-                    c.contains("series") || c.contains("saga") ||
-                    c.contains("book ") || c.contains("trilogy")
-                || c.all { ch -> ch.isLetter() || ch.isWhitespace() || ch == '\'' }
-            }) return null
+            val c = candidate.lowercase()
+            // Only accept as series if it contains a series-related keyword
+            val hasSeriesKeyword = c.contains("series") || c.contains("saga") ||
+                c.contains("book ") || c.contains("trilogy") ||
+                c.contains("chronicle") || c.contains("cycle") ||
+                c.contains("duology") || c.contains("quartet") ||
+                c.startsWith("a novel")
+            if (!hasSeriesKeyword) return null
 
             // "A Novel of The Maple Hills" -> "The Maple Hills"
             val cleaned = candidate
@@ -977,25 +979,30 @@ class AmazonMetadataScraper @Inject constructor() {
     // Format detection
     // =====================================================================
 
-    private fun isEbook(html: String): Boolean {
+    private fun isNonPhysicalFormat(html: String): Boolean {
         val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
         val rawTitle = titleRegex.find(html)?.groupValues?.get(1) ?: ""
         val titleLower = rawTitle.lowercase()
         if (titleLower.contains("kindle") || titleLower.contains("ebook")) return true
+        if (titleLower.contains("audible") || titleLower.contains("audiobook") || titleLower.contains("audio cd")) return true
 
         if (html.contains("kindle-price", ignoreCase = true)) return true
         if (html.contains("a]Kindle", ignoreCase = true)) return true
+        if (html.contains("audible_", ignoreCase = true)) return true
+        if (html.contains("a]Audible", ignoreCase = true)) return true
 
         val selectedFormatRegex = """class="a-button-selected"[^>]*>.*?<span[^>]*>([^<]+)</span>"""
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         val selectedFormat = selectedFormatRegex.find(html)?.groupValues?.get(1)?.trim()?.lowercase()
         if (selectedFormat != null && (selectedFormat.contains("kindle") || selectedFormat.contains("ebook"))) return true
+        if (selectedFormat != null && (selectedFormat.contains("audible") || selectedFormat.contains("audiobook") || selectedFormat.contains("audio cd"))) return true
 
         val binding = extractDetailBullet(html, "Binding")
             ?: extractDetailBullet(html, "Format")
         if (binding != null) {
             val bindingLower = binding.lowercase()
             if (bindingLower.contains("kindle") || bindingLower.contains("ebook")) return true
+            if (bindingLower.contains("audible") || bindingLower.contains("audiobook") || bindingLower.contains("audio cd")) return true
         }
 
         val asinRegex = """<input[^>]*name="ASIN"[^>]*value="(B[A-Z0-9]{9})"[^>]*/?>""".toRegex()
@@ -1018,7 +1025,8 @@ class AmazonMetadataScraper @Inject constructor() {
         val binding = extractDetailBullet(html, "Binding")
             ?: extractDetailBullet(html, "Format")
         if (binding != null && !binding.lowercase().let {
-            it.contains("kindle") || it.contains("ebook")
+            it.contains("kindle") || it.contains("ebook") ||
+                it.contains("audible") || it.contains("audiobook") || it.contains("audio cd")
         }) return binding
 
         val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)

@@ -778,7 +778,7 @@ class BookRepository @Inject constructor(
 
     /**
      * Merges two Book records, picking the most complete value per field.
-     * - Title/author: prefer non-"Unknown", then shorter (less edition cruft)
+     * - Title/author: prefer non-"Unknown", then longer (more specific; cleanTitle strips cruft)
      * - Description/subjects: prefer longer (more detail)
      * - Page count: prefer higher non-zero value
      * - Series: prefer the source that has both name + number
@@ -819,14 +819,14 @@ class BookRepository @Inject constructor(
         )
     }
 
-    /** Prefer non-"Unknown Title", then shorter (less likely to have edition cruft). */
+    /** Prefer non-"Unknown Title", then longer (more specific; cleanTitle strips cruft later). */
     private fun pickBestTitle(a: String, b: String): String {
         val aReal = a != "Unknown Title"
         val bReal = b != "Unknown Title"
         if (aReal && !bReal) return a
         if (!aReal && bReal) return b
         if (!aReal && !bReal) return a
-        return if (b.length < a.length) b else a
+        return if (b.length > a.length) b else a
     }
 
     /** Prefer non-"Unknown Author", then longer (more complete author list). */
