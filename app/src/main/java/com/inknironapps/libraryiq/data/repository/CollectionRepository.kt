@@ -53,14 +53,24 @@ class CollectionRepository @Inject constructor(
     }
 
     suspend fun ensureDefaultCollections() {
+        // Rename old "To Buy" to "Want to Buy" if it exists
+        val oldToBuy = collectionDao.getCollectionByName("To Buy")
+        if (oldToBuy != null) {
+            updateCollection(oldToBuy.copy(name = "Want to Buy"))
+        }
+
         val defaults = listOf(
             "Favorites" to "Your favorite books",
-            "To Buy" to "Books you want to purchase"
+            "Want to Buy" to "Books you want to purchase"
         )
         for ((name, description) in defaults) {
             if (collectionDao.countByName(name) == 0) {
                 createCollection(Collection(name = name, description = description))
             }
         }
+    }
+
+    suspend fun getWantToBuyCollectionId(): String? {
+        return collectionDao.getCollectionByName("Want to Buy")?.id
     }
 }

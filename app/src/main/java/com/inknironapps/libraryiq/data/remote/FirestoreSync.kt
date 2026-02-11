@@ -77,6 +77,10 @@ class FirestoreSync @Inject constructor(
         get() = prefs.getString("library_code", null)
         private set(value) = prefs.edit().putString("library_code", value).apply()
 
+    var isLibraryCreator: Boolean
+        get() = prefs.getBoolean("is_library_creator", false)
+        private set(value) = prefs.edit().putBoolean("is_library_creator", value).apply()
+
     val isSyncEnabled: Boolean
         get() = isSignedIn && !libraryCode.isNullOrBlank()
 
@@ -152,6 +156,7 @@ class FirestoreSync @Inject constructor(
             ).await()
 
             libraryCode = code
+            isLibraryCreator = true
             Result.success(code)
         } catch (e: Exception) {
             Result.failure(e)
@@ -187,6 +192,7 @@ class FirestoreSync @Inject constructor(
             ).await()
 
             libraryCode = normalizedCode
+            isLibraryCreator = false
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -196,6 +202,7 @@ class FirestoreSync @Inject constructor(
     fun leaveLibrary() {
         stopListening()
         libraryCode = null
+        isLibraryCreator = false
     }
 
     /**
@@ -220,6 +227,7 @@ class FirestoreSync @Inject constructor(
             if (doc != null) {
                 val code = doc.id
                 libraryCode = code
+                isLibraryCreator = (doc.getString("createdBy") == userId)
                 code
             } else {
                 null

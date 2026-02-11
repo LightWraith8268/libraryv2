@@ -111,7 +111,8 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // --- Subscription Section ---
-            if (uiState.isSignedIn && !uiState.hasProAccess) {
+            // Show to signed-in users without Pro, but NOT to joined members (they sync free via creator's Pro)
+            if (uiState.isSignedIn && !uiState.hasProAccess && (!uiState.isSyncEnabled || uiState.isLibraryCreator)) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -132,13 +133,13 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Unlock Cloud Sync",
+                            text = "Unlock Multi-Device Sync",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Subscribe to create a library and sync across multiple devices. Invited members can join for free.",
+                            text = "Subscribe to sync your library across multiple devices and invite others to join.",
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -210,9 +211,7 @@ fun SettingsScreen(
                                 "Library syncs across devices in real-time"
                             else if (!uiState.isSignedIn)
                                 "Sign in to create or join a library"
-                            else if (!uiState.hasProAccess)
-                                "Subscribe to create a library, or join one for free"
-                            else "Create or join a library to sync",
+                            else "Create or join a library to get started",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -254,7 +253,7 @@ fun SettingsScreen(
             if (!uiState.isSignedIn) {
                 // --- Google Sign In ---
                 Text(
-                    text = "Sign in with your Google account. Subscribe to create a library, or join an existing one for free.",
+                    text = "Sign in with your Google account to create or join a library.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -327,7 +326,8 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Share this code with the other device",
+                                text = if (uiState.hasProAccess) "Share this code to sync with other devices"
+                                else "Subscribe to Pro to sync across devices",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -345,7 +345,7 @@ fun SettingsScreen(
                 } else {
                     // No library yet - create or join
                     Text(
-                        text = "Create a library or join an existing one to sync between devices.",
+                        text = "Create a new library or join an existing one with a code.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

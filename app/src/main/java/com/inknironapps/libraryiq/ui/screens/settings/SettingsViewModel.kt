@@ -36,6 +36,7 @@ data class SettingsUiState(
     val hasProAccess: Boolean = false,
     val isSubscribed: Boolean = false,
     val isAdmin: Boolean = false,
+    val isLibraryCreator: Boolean = false,
     val subscriptionPrice: String? = null,
     val joinCode: String = "",
     val isLoading: Boolean = false,
@@ -90,7 +91,8 @@ class SettingsViewModel @Inject constructor(
                 isSyncEnabled = firestoreSync.isSyncEnabled,
                 hasProAccess = billingManager.hasProAccess,
                 isSubscribed = billingManager.isSubscribed.value,
-                isAdmin = billingManager.isAdmin.value
+                isAdmin = billingManager.isAdmin.value,
+                isLibraryCreator = firestoreSync.isLibraryCreator
             )
         }
     }
