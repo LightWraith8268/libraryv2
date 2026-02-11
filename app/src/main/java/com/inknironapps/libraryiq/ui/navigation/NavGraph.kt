@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -35,6 +36,7 @@ import com.inknironapps.libraryiq.ui.screens.library.LibraryScreen
 import com.inknironapps.libraryiq.ui.screens.scanner.ScannerScreen
 import com.inknironapps.libraryiq.ui.screens.settings.SettingsScreen
 import com.inknironapps.libraryiq.ui.screens.spinner.SpinnerScreen
+import com.inknironapps.libraryiq.ui.screens.stats.StatsScreen
 
 data class BottomNavItem(
     val screen: Screen,
@@ -71,6 +73,7 @@ val bottomNavItems = listOf(
     BottomNavItem(Screen.Library, "Library", Icons.Default.LibraryBooks, Screen.Library.BASE_ROUTE),
     BottomNavItem(Screen.Spinner, "Spinner", Icons.Default.Casino),
     BottomNavItem(Screen.Collections, "Collections", Icons.Default.CollectionsBookmark),
+    BottomNavItem(Screen.Stats, "Stats", Icons.Default.BarChart),
     BottomNavItem(Screen.Settings, "Settings", Icons.Default.Settings)
 )
 
@@ -84,6 +87,7 @@ fun AppNavigation() {
         Screen.Library.route,
         Screen.Spinner.route,
         Screen.Collections.route,
+        Screen.Stats.route,
         Screen.Settings.route
     )
 
@@ -137,6 +141,10 @@ fun AppNavigation() {
 
             composable(Screen.Collections.route) {
                 CollectionsScreen(navController = navController)
+            }
+
+            composable(Screen.Stats.route) {
+                StatsScreen()
             }
 
             composable(Screen.Settings.route) {
