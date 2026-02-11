@@ -461,7 +461,14 @@ class BookRepository @Inject constructor(
     private suspend fun tryGoogleBooksIsbn(isbn: String): Book? {
         return try {
             val response = bookApiService.searchByIsbn("isbn:$isbn")
-            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
+            // Validate the result's industryIdentifiers actually contain the scanned ISBN.
+            // Google Books can return a completely wrong book for an isbn: query due to
+            // metadata errors in their database.
+            val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) convertIsbn13ToIsbn10(isbn) else null
+            response.items?.firstOrNull { item ->
+                val ids = item.volumeInfo.industryIdentifiers?.map { it.identifier } ?: emptyList()
+                ids.contains(isbn) || (isbn10 != null && ids.contains(isbn10))
+            }?.let { googleBookToBook(it, isbn) }.also {
                 DebugLog.d(TAG, "Google Books (isbn:$isbn): ${it?.title ?: "not found"}")
             }
         } catch (e: Exception) {
