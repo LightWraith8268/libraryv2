@@ -1064,7 +1064,7 @@ class AmazonMetadataScraper @Inject constructor() {
         val seriesSection = html.substringAfter("seriesTitle", "").take(500)
         if (seriesSection.isNotEmpty()) {
             val seriesLinkRegex = """<a[^>]*>([^<]+)</a>""".toRegex()
-            val seriesName = seriesLinkRegex.find(seriesSection)?.groupValues?.get(1)?.trim()
+            val seriesName = seriesLinkRegex.find(seriesSection)?.groupValues?.get(1)?.trim()?.ifBlank { null }
             val seriesNumber = bookNumRegex.find(seriesSection)?.groupValues?.get(1)
             if (seriesName != null) {
                 DebugLog.d(TAG, "Series from seriesTitle: '$seriesName' #$seriesNumber")

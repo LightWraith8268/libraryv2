@@ -270,28 +270,31 @@ class SettingsViewModel @Inject constructor(
                     val result = bookRepository.lookupByIsbnSkipLocal(book.isbn!!)
                     if (result.book != null) {
                         val fresh = result.book
+                        // Merge fresh API data with existing book data.
+                        // Use takeIf{isNotBlank()} to prevent empty strings from
+                        // overwriting valid existing data (e.g. series name).
                         val merged = book.copy(
-                            title = if (fresh.title != "Unknown Title") fresh.title else book.title,
-                            author = if (fresh.author != "Unknown Author") fresh.author else book.author,
-                            description = fresh.description ?: book.description,
-                            coverUrl = if (book.coverManuallySet) book.coverUrl else (fresh.coverUrl ?: book.coverUrl),
+                            title = if (fresh.title != "Unknown Title" && fresh.title.isNotBlank()) fresh.title else book.title,
+                            author = if (fresh.author != "Unknown Author" && fresh.author.isNotBlank()) fresh.author else book.author,
+                            description = fresh.description?.takeIf { it.isNotBlank() } ?: book.description,
+                            coverUrl = if (book.coverManuallySet) book.coverUrl else (fresh.coverUrl?.takeIf { it.isNotBlank() } ?: book.coverUrl),
                             pageCount = fresh.pageCount ?: book.pageCount,
-                            publisher = fresh.publisher ?: book.publisher,
-                            publishedDate = fresh.publishedDate ?: book.publishedDate,
-                            isbn10 = fresh.isbn10 ?: book.isbn10,
-                            series = fresh.series ?: book.series,
-                            seriesNumber = fresh.seriesNumber ?: book.seriesNumber,
-                            genre = fresh.genre ?: book.genre,
-                            language = fresh.language ?: book.language,
-                            format = book.format ?: fresh.format,
-                            subjects = fresh.subjects ?: book.subjects,
-                            asin = fresh.asin ?: book.asin,
-                            goodreadsId = fresh.goodreadsId ?: book.goodreadsId,
-                            openLibraryId = fresh.openLibraryId ?: book.openLibraryId,
+                            publisher = fresh.publisher?.takeIf { it.isNotBlank() } ?: book.publisher,
+                            publishedDate = fresh.publishedDate?.takeIf { it.isNotBlank() } ?: book.publishedDate,
+                            isbn10 = fresh.isbn10?.takeIf { it.isNotBlank() } ?: book.isbn10,
+                            series = fresh.series?.takeIf { it.isNotBlank() } ?: book.series,
+                            seriesNumber = fresh.seriesNumber?.takeIf { it.isNotBlank() } ?: book.seriesNumber,
+                            genre = fresh.genre?.takeIf { it.isNotBlank() } ?: book.genre,
+                            language = fresh.language?.takeIf { it.isNotBlank() } ?: book.language,
+                            format = book.format ?: fresh.format?.takeIf { it.isNotBlank() },
+                            subjects = fresh.subjects?.takeIf { it.isNotBlank() } ?: book.subjects,
+                            asin = fresh.asin?.takeIf { it.isNotBlank() } ?: book.asin,
+                            goodreadsId = fresh.goodreadsId?.takeIf { it.isNotBlank() } ?: book.goodreadsId,
+                            openLibraryId = fresh.openLibraryId?.takeIf { it.isNotBlank() } ?: book.openLibraryId,
                             hardcoverId = fresh.hardcoverId ?: book.hardcoverId,
-                            edition = fresh.edition ?: book.edition,
-                            originalTitle = fresh.originalTitle ?: book.originalTitle,
-                            originalLanguage = fresh.originalLanguage ?: book.originalLanguage
+                            edition = fresh.edition?.takeIf { it.isNotBlank() } ?: book.edition,
+                            originalTitle = fresh.originalTitle?.takeIf { it.isNotBlank() } ?: book.originalTitle,
+                            originalLanguage = fresh.originalLanguage?.takeIf { it.isNotBlank() } ?: book.originalLanguage
                         )
                         bookRepository.updateBook(merged)
                         updated++
