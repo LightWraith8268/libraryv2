@@ -77,7 +77,13 @@ fun ScannerScreen(
 
     Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
         TopAppBar(
-            title = { Text("Scan ISBN") },
+            title = {
+                if (uiState.addedCount > 0) {
+                    Text("Scan ISBN (${uiState.addedCount} added)")
+                } else {
+                    Text("Scan ISBN")
+                }
+            },
             navigationIcon = {
                 IconButton(onClick = { navController.popBackStack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

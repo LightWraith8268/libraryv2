@@ -147,9 +147,11 @@ class BookRepository @Inject constructor(
         val amazonBook = tryAmazon(isbn)
         diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
 
-        // Collect all ISBN-based results and merge
+        // Collect all ISBN-based results and merge.
+        // Order matters: first source's non-null fields win.
+        // Amazon/Hardcover have the best covers, so put them first.
         val isbnSources = listOfNotNull(
-            googleBook, googleGeneralBook, googleIsbn10Book, openLibraryBook, hardcoverBook, amazonBook
+            amazonBook, hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
         )
 
         if (isbnSources.isEmpty()) {

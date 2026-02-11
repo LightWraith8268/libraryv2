@@ -22,8 +22,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
@@ -42,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -72,6 +75,14 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val connectivityManager = remember {
+        context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    }
+    val isOnline = remember {
+        val network = connectivityManager.activeNetwork
+        val capabilities = network?.let { connectivityManager.getNetworkCapabilities(it) }
+        capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -162,7 +173,9 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (uiState.isSyncEnabled)
+                    containerColor = if (uiState.isSyncEnabled && !isOnline)
+                        MaterialTheme.colorScheme.errorContainer
+                    else if (uiState.isSyncEnabled)
                         MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surfaceVariant
                 )
@@ -175,20 +188,25 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(
-                        if (uiState.isSyncEnabled) Icons.Default.Sync
+                        if (uiState.isSyncEnabled && !isOnline) Icons.Default.CloudOff
+                        else if (uiState.isSyncEnabled) Icons.Default.Sync
                         else Icons.Default.SyncDisabled,
                         contentDescription = null,
-                        tint = if (uiState.isSyncEnabled) MaterialTheme.colorScheme.primary
+                        tint = if (uiState.isSyncEnabled && !isOnline) MaterialTheme.colorScheme.error
+                        else if (uiState.isSyncEnabled) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (uiState.isSyncEnabled) "Sync Active"
+                            text = if (uiState.isSyncEnabled && !isOnline) "Offline"
+                            else if (uiState.isSyncEnabled) "Sync Active"
                             else "Sync Disabled",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (uiState.isSyncEnabled)
+                            text = if (uiState.isSyncEnabled && !isOnline)
+                                "Changes will sync when reconnected"
+                            else if (uiState.isSyncEnabled)
                                 "Library syncs across devices in real-time"
                             else if (!uiState.isSignedIn)
                                 "Sign in to create or join a library"
@@ -408,11 +426,47 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // --- Scanner ---
+            Text(
+                text = "Scanner",
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Continuous Scan", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Scan multiple books without returning to library",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = viewModel.libraryPreferences.continuousScan,
+                    onCheckedChange = { viewModel.libraryPreferences.updateContinuousScan(it) }
+                )
+            }
+
+            HorizontalDivider()
+
             // --- Data Management ---
             Text(
                 text = "Data Management",
                 style = MaterialTheme.typography.titleLarge
             )
+
+            OutlinedButton(
+                onClick = { viewModel.exportLibraryCsv(context as android.app.Activity) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Share, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Export Library as CSV")
+            }
 
             Button(
                 onClick = viewModel::showClearDataDialog,

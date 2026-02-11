@@ -82,6 +82,14 @@ class LibraryPreferences @Inject constructor(
         prefs.edit().putBoolean(KEY_COMPACT_LIST, value).apply()
     }
 
+    var continuousScan: Boolean by mutableStateOf(prefs.getBoolean(KEY_CONTINUOUS_SCAN, false))
+        private set
+
+    fun updateContinuousScan(value: Boolean) {
+        continuousScan = value
+        prefs.edit().putBoolean(KEY_CONTINUOUS_SCAN, value).apply()
+    }
+
     companion object {
         private const val KEY_LAYOUT = "layout"
         private const val KEY_GRID_COLUMNS = "grid_columns"
@@ -89,5 +97,6 @@ class LibraryPreferences @Inject constructor(
         private const val KEY_DEFAULT_GROUP = "default_group"
         private const val KEY_SHOW_COVERS = "show_covers"
         private const val KEY_COMPACT_LIST = "compact_list"
+        private const val KEY_CONTINUOUS_SCAN = "continuous_scan"
     }
 }

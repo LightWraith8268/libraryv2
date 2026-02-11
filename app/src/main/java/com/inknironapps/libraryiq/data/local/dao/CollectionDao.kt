@@ -49,4 +49,7 @@ interface CollectionDao {
 
     @Query("SELECT collectionId FROM book_collection_cross_ref WHERE bookId = :bookId")
     fun getCollectionIdsForBook(bookId: String): Flow<List<String>>
+
+    @Query("SELECT COUNT(*) FROM collections WHERE name = :name")
+    suspend fun countByName(name: String): Int
 }

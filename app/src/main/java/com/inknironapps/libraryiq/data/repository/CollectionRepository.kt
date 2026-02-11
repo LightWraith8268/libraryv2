@@ -51,4 +51,16 @@ class CollectionRepository @Inject constructor(
         collectionDao.removeBookFromCollectionById(bookId, collectionId)
         firestoreSync.deleteBookCollectionRef(bookId, collectionId)
     }
+
+    suspend fun ensureDefaultCollections() {
+        val defaults = listOf(
+            "Favorites" to "Your favorite books",
+            "To Buy" to "Books you want to purchase"
+        )
+        for ((name, description) in defaults) {
+            if (collectionDao.countByName(name) == 0) {
+                createCollection(Collection(name = name, description = description))
+            }
+        }
+    }
 }

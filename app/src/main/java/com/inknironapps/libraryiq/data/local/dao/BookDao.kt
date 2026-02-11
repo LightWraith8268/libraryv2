@@ -52,6 +52,33 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :bookId")
     suspend fun deleteBookById(bookId: String)
 
+    @Query("SELECT * FROM books ORDER BY title ASC")
+    suspend fun getAllBooksList(): List<Book>
+
     @Query("SELECT COUNT(*) FROM books")
     fun getBookCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM books WHERE readingStatus = :status")
+    suspend fun getCountByStatus(status: ReadingStatus): Int
+
+    @Query("SELECT AVG(rating) FROM books WHERE rating IS NOT NULL AND rating > 0")
+    suspend fun getAverageRating(): Float?
+
+    @Query("SELECT SUM(pageCount) FROM books WHERE readingStatus = 'READ' AND pageCount IS NOT NULL")
+    suspend fun getTotalPagesRead(): Int?
+
+    @Query("SELECT author, COUNT(*) as cnt FROM books GROUP BY author ORDER BY cnt DESC LIMIT 5")
+    suspend fun getTopAuthors(): List<AuthorCount>
+
+    @Query("SELECT genre, COUNT(*) as cnt FROM books WHERE genre IS NOT NULL AND genre != '' GROUP BY genre ORDER BY cnt DESC LIMIT 5")
+    suspend fun getTopGenres(): List<GenreCount>
+
+    @Query("SELECT COUNT(*) FROM books WHERE dateAdded >= :since")
+    suspend fun getBooksAddedSince(since: Long): Int
+
+    @Query("SELECT COUNT(*) FROM books WHERE readingStatus = 'READ' AND dateFinished >= :since")
+    suspend fun getBooksFinishedSince(since: Long): Int
 }
+
+data class AuthorCount(val author: String, val cnt: Int)
+data class GenreCount(val genre: String, val cnt: Int)
