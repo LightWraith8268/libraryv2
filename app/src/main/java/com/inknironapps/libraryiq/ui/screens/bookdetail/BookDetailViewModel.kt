@@ -226,11 +226,12 @@ class BookDetailViewModel @Inject constructor(
                     val fresh = result.book
                     // Merge: prefer fresh metadata for most fields since user explicitly refreshed.
                     // Keep user-editable fields (reading status, rating, notes, dates) untouched.
+                    // If user manually chose a cover, keep it.
                     val updated = book.copy(
                         title = if (fresh.title != "Unknown Title") fresh.title else book.title,
                         author = if (fresh.author != "Unknown Author") fresh.author else book.author,
                         description = fresh.description ?: book.description,
-                        coverUrl = fresh.coverUrl ?: book.coverUrl,
+                        coverUrl = if (book.coverManuallySet) book.coverUrl else (fresh.coverUrl ?: book.coverUrl),
                         pageCount = fresh.pageCount ?: book.pageCount,
                         publisher = fresh.publisher ?: book.publisher,
                         publishedDate = fresh.publishedDate ?: book.publishedDate,
@@ -301,7 +302,7 @@ class BookDetailViewModel @Inject constructor(
         val book = _uiState.value.book ?: return
         _uiState.value = _uiState.value.copy(showCoverPicker = false)
         viewModelScope.launch {
-            bookRepository.updateBook(book.copy(coverUrl = url))
+            bookRepository.updateBook(book.copy(coverUrl = url, coverManuallySet = true))
         }
     }
 
