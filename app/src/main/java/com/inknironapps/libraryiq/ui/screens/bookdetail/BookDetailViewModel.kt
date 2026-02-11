@@ -227,6 +227,10 @@ class BookDetailViewModel @Inject constructor(
                     // Merge: prefer fresh metadata for most fields since user explicitly refreshed.
                     // Keep user-editable fields (reading status, rating, notes, dates) untouched.
                     // If user manually chose a cover, keep it.
+                    // Series: use fresh data directly — if the APIs say no series, clear it.
+                    // This ensures stale/incorrect series data gets corrected on refresh.
+                    val freshSeries = fresh.series?.trim()?.ifBlank { null }
+                    val freshSeriesNumber = fresh.seriesNumber?.trim()?.ifBlank { null }
                     val updated = book.copy(
                         title = if (fresh.title != "Unknown Title") fresh.title else book.title,
                         author = if (fresh.author != "Unknown Author") fresh.author else book.author,
@@ -236,8 +240,8 @@ class BookDetailViewModel @Inject constructor(
                         publisher = fresh.publisher ?: book.publisher,
                         publishedDate = fresh.publishedDate ?: book.publishedDate,
                         isbn10 = fresh.isbn10 ?: book.isbn10,
-                        series = fresh.series ?: book.series,
-                        seriesNumber = fresh.seriesNumber ?: book.seriesNumber,
+                        series = freshSeries,
+                        seriesNumber = freshSeriesNumber,
                         genre = fresh.genre ?: book.genre,
                         language = fresh.language ?: book.language,
                         format = book.format ?: fresh.format,

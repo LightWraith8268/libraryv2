@@ -268,6 +268,14 @@ class BookRepository @Inject constructor(
             merged = merged.copy(description = cleanDescription(merged.description!!))
         }
 
+        // Sanitize blank series/seriesNumber to null before further processing
+        if (merged.series?.isBlank() == true) {
+            merged = merged.copy(series = null)
+        }
+        if (merged.seriesNumber?.isBlank() == true) {
+            merged = merged.copy(seriesNumber = null)
+        }
+
         // Standardize series name to match existing books in the library
         if (merged.series != null) {
             merged = merged.copy(series = standardizeSeriesName(merged.series!!))
@@ -897,7 +905,7 @@ class BookRepository @Inject constructor(
             pageCount = edition.numberOfPages,
             publisher = edition.publishers?.firstOrNull(),
             publishedDate = edition.publishDate,
-            series = edition.series?.firstOrNull(),
+            series = edition.series?.firstOrNull()?.trim()?.ifBlank { null },
             language = language,
             format = edition.physicalFormat,
             subjects = subjects?.take(10)?.joinToString(", ")
@@ -913,7 +921,7 @@ class BookRepository @Inject constructor(
             ?: emptyList()
 
         val seriesInfo = edition.book?.bookSeries?.firstOrNull()
-        val seriesName = seriesInfo?.series?.name
+        val seriesName = seriesInfo?.series?.name?.trim()?.ifBlank { null }
         val seriesNumber = seriesInfo?.position?.let {
             if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
         }
@@ -1129,18 +1137,23 @@ class BookRepository @Inject constructor(
         aName: String?, aNum: String?,
         bName: String?, bNum: String?
     ): Pair<String?, String?> {
-        val aHasBoth = aName != null && aNum != null
-        val bHasBoth = bName != null && bNum != null
+        // Treat blank series names as null
+        val aN = aName?.trim()?.ifBlank { null }
+        val bN = bName?.trim()?.ifBlank { null }
+        val aNo = aNum?.trim()?.ifBlank { null }
+        val bNo = bNum?.trim()?.ifBlank { null }
+        val aHasBoth = aN != null && aNo != null
+        val bHasBoth = bN != null && bNo != null
         return when {
-            aHasBoth && !bHasBoth -> aName to aNum
-            bHasBoth && !aHasBoth -> bName to bNum
-            aName != null && bName != null -> {
+            aHasBoth && !bHasBoth -> aN to aNo
+            bHasBoth && !aHasBoth -> bN to bNo
+            aN != null && bN != null -> {
                 // Both have name (with or without number) — pick longer name, keep its number
-                if (bName.length > aName.length) bName to (bNum ?: aNum)
-                else aName to (aNum ?: bNum)
+                if (bN.length > aN.length) bN to (bNo ?: aNo)
+                else aN to (aNo ?: bNo)
             }
-            aName != null -> aName to aNum
-            bName != null -> bName to bNum
+            aN != null -> aN to aNo
+            bN != null -> bN to bNo
             else -> null to null
         }
     }
