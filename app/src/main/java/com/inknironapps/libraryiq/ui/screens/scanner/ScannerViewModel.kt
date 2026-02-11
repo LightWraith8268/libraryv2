@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.inknironapps.libraryiq.data.local.entity.Book
 import com.inknironapps.libraryiq.data.repository.BookRepository
+import com.inknironapps.libraryiq.ui.screens.library.LibraryPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,12 +21,14 @@ data class ScannerUiState(
     val isSaved: Boolean = false,
     val error: String? = null,
     val diagnostics: String? = null,
-    val isScanning: Boolean = true
+    val isScanning: Boolean = true,
+    val addedCount: Int = 0
 )
 
 @HiltViewModel
 class ScannerViewModel @Inject constructor(
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    val libraryPreferences: LibraryPreferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScannerUiState())
@@ -84,7 +87,13 @@ class ScannerViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 bookRepository.addBook(book)
-                _uiState.update { it.copy(isSaved = true) }
+                if (libraryPreferences.continuousScan) {
+                    val newCount = _uiState.value.addedCount + 1
+                    lastScannedIsbn = null
+                    _uiState.value = ScannerUiState(addedCount = newCount)
+                } else {
+                    _uiState.update { it.copy(isSaved = true) }
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = "Failed to save: ${e.message}") }
             }
@@ -93,6 +102,8 @@ class ScannerViewModel @Inject constructor(
 
     fun scanAgain() {
         lastScannedIsbn = null
-        _uiState.value = ScannerUiState()
+        _uiState.value = _uiState.value.let {
+            ScannerUiState(addedCount = it.addedCount)
+        }
     }
 }

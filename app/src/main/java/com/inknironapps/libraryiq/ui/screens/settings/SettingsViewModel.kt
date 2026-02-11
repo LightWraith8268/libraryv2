@@ -41,6 +41,7 @@ class SettingsViewModel @Inject constructor(
     private val firestoreSync: FirestoreSync,
     private val billingManager: BillingManager,
     private val database: AppDatabase,
+    val libraryPreferences: com.inknironapps.libraryiq.ui.screens.library.LibraryPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 

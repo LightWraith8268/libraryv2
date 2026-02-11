@@ -42,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -404,6 +405,33 @@ fun SettingsScreen(
             }
             uiState.message?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+            }
+
+            HorizontalDivider()
+
+            // --- Scanner ---
+            Text(
+                text = "Scanner",
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Continuous Scan", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Scan multiple books without returning to library",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = viewModel.libraryPreferences.continuousScan,
+                    onCheckedChange = { viewModel.libraryPreferences.updateContinuousScan(it) }
+                )
             }
 
             HorizontalDivider()
