@@ -148,6 +148,57 @@ class AmazonMetadataScraper @Inject constructor() {
             .toList()
     }
 
+    /**
+     * Searches Amazon by book title and author name instead of ISBN.
+     * Used as a fallback when ISBN-based lookup fails but we have
+     * title/author from another source (e.g., B&N, Target, Google Books).
+     *
+     * @param title The book title to search for
+     * @param author The author name (pass "Unknown Author" to omit)
+     * @param isbn The original ISBN to validate against product page
+     */
+    suspend fun lookupByTitleAuthor(title: String, author: String, isbn: String): Book? = withContext(Dispatchers.IO) {
+        try {
+            val searchTerms = buildString {
+                append(title)
+                if (author != "Unknown Author") {
+                    append(" ")
+                    append(author)
+                }
+            }
+            val encoded = java.net.URLEncoder.encode(searchTerms, "UTF-8")
+            val url = "https://www.amazon.com/s?k=$encoded&i=stripbooks"
+            DebugLog.d(TAG, "Title+author search: $url")
+
+            val html = fetchPage(url) ?: return@withContext null
+
+            val searchSeriesInfo = extractSearchTitle(html)?.let { extractSeriesFromText(it) }
+
+            val asins = extractAllAsins(html)
+            DebugLog.d(TAG, "Title+author search found ${asins.size} ASINs")
+
+            // Try non-B ASINs first (physical books)
+            for (asin in asins) {
+                if (asin.startsWith("B")) continue
+                val productBook = fetchProductPage(asin, isbn)
+                if (productBook != null) return@withContext mergeSearchSeries(productBook, searchSeriesInfo)
+            }
+
+            // Then try B-ASINs
+            for (asin in asins) {
+                if (!asin.startsWith("B")) continue
+                val productBook = fetchProductPage(asin, isbn)
+                if (productBook != null) return@withContext mergeSearchSeries(productBook, searchSeriesInfo)
+            }
+
+            // Fallback: parse search results
+            parseSearchResults(html, isbn)
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Title+author lookup failed", e)
+            null
+        }
+    }
+
     // --- Search Results Parsing (fallback if product page fails) ---
 
     private fun parseSearchResults(html: String, isbn: String): Book? {
