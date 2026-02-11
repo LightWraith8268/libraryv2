@@ -195,6 +195,11 @@ class BookRepository @Inject constructor(
         // Clean up the final title - strip edition/format suffixes and series parentheticals
         merged = merged.copy(title = cleanTitle(merged.title, merged.series))
 
+        // Clean up description - strip trailing "Read More" artifacts from scraped sources
+        if (merged.description != null) {
+            merged = merged.copy(description = cleanDescription(merged.description!!))
+        }
+
         // Standardize series name to match existing books in the library
         if (merged.series != null) {
             merged = merged.copy(series = standardizeSeriesName(merged.series!!))
@@ -745,6 +750,14 @@ class BookRepository @Inject constructor(
         // Strip anything from the first '(' onward — removes edition, series, format info in parens
         cleaned = cleaned.replace(Regex("""\s*\(.*$"""), "")
         return cleaned.trim()
+    }
+
+    /** Strips trailing "Read More", "Read more", etc. scraped from Amazon/other sources. */
+    private fun cleanDescription(desc: String): String {
+        return desc
+            .replace(Regex("""\s*Read\s*more\.?\s*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*Read\s*less\.?\s*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
     }
 
     /**
