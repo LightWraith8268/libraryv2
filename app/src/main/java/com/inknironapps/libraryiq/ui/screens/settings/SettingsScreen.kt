@@ -670,6 +670,13 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(if (uiState.isCheckingUpdate) "Checking..." else "Check for Updates")
                 }
+                uiState.updateMessage?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))

@@ -551,7 +551,7 @@ class AmazonMetadataScraper @Inject constructor() {
             .toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
         val expander = expanderRegex.find(html)?.groupValues?.get(1)
         if (expander != null) {
-            val text = stripReadMore(stripHtmlTags(expander).trim())
+            val text = cleanAmazonText(stripHtmlTags(expander).trim())
             if (text.length > 20) return text
         }
 
@@ -560,22 +560,48 @@ class AmazonMetadataScraper @Inject constructor() {
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         val iframe = iframeRegex.find(html)?.groupValues?.get(1)
         if (iframe != null) {
-            val text = stripReadMore(stripHtmlTags(iframe).trim())
+            val text = cleanAmazonText(stripHtmlTags(iframe).trim())
             if (text.length > 20) return text
         }
 
         val desc = extractMeta(html, "description")
-        if (desc != null && desc.length > 20) return stripReadMore(desc)
+        if (desc != null && desc.length > 20) return cleanAmazonText(desc)
 
         return null
     }
 
-    /** Strip trailing "Read more" / "Read less" artifacts from scraped descriptions. */
-    private fun stripReadMore(text: String): String {
-        return text
-            .replace(Regex("""\s*Read\s*more\.?\s*$""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\s*Read\s*less\.?\s*$""", RegexOption.IGNORE_CASE), "")
+    /**
+     * Comprehensive cleanup of text scraped from Amazon pages.
+     * Strips trailing UI artifacts, navigation text, and promotional copy
+     * that can leak into descriptions and other metadata fields.
+     */
+    private fun cleanAmazonText(text: String): String {
+        var cleaned = text
+        // Trailing UI button/link text
+        val trailingPatterns = listOf(
+            """\s*Read\s*more\.?\s*$""",
+            """\s*Read\s*less\.?\s*$""",
+            """\s*See\s*(?:all|more)\s*(?:details|formats|editions)?\.?\s*$""",
+            """\s*(?:Click|Tap)\s*(?:to\s*)?(?:look\s*inside|here)\.?\s*$""",
+            """\s*Look\s*inside\.?\s*$""",
+            """\s*Collapse\s*$""",
+            """\s*Expand\s*$""",
+            """\s*Report\s*(?:an?\s*)?issue\.?\s*$""",
+            """\s*Follow\s*the\s*(?:Author|author)\.?\s*$""",
+            """\s*Previous\s*page\.?\s*$""",
+            """\s*Next\s*page\.?\s*$""",
+            """\s*›\s*(?:Visit|See)\s*(?:Amazon'?s?|the)\s*.+(?:Page|Store)\.?\s*$""",
+            """\s*(?:FREE|Prime)\s*(?:delivery|shipping).*$""",
+        )
+        for (pattern in trailingPatterns) {
+            cleaned = cleaned.replace(Regex(pattern, RegexOption.IGNORE_CASE), "")
+        }
+        // Inline Amazon branding that shouldn't be in metadata
+        cleaned = cleaned
+            .replace(Regex("""\s*Amazon\.com\s*""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\s{2,}"""), " ")
             .trim()
+        return cleaned
     }
 
     // =====================================================================
