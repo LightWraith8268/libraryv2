@@ -1,11 +1,7 @@
 package com.inknironapps.libraryiq.data.update
 
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.net.Uri
 import android.os.Environment
 import androidx.core.content.FileProvider
 import com.inknironapps.libraryiq.BuildConfig
@@ -176,39 +172,54 @@ class AppUpdateManager @Inject constructor(
         }
     }
 
-    fun downloadAndInstall(updateInfo: UpdateInfo) {
+    /**
+     * Downloads the APK using OkHttp (with auth for private repos) and launches install.
+     * Uses a coroutine so the app stays in the foreground, avoiding Android 10+
+     * background activity start restrictions that silently block startActivity().
+     */
+    suspend fun downloadAndInstall(updateInfo: UpdateInfo): Boolean = withContext(Dispatchers.IO) {
         val fileName = "LibraryIQ-${updateInfo.tagName}-${if (BuildConfig.DEBUG) "debug" else "release"}.apk"
+        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: return@withContext false
 
         // Clean up old downloads
-        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        downloadsDir?.listFiles()?.filter { it.name.startsWith("LibraryIQ-") && it.name.endsWith(".apk") }
+        downloadsDir.listFiles()?.filter { it.name.startsWith("LibraryIQ-") && it.name.endsWith(".apk") }
             ?.forEach { it.delete() }
 
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(updateInfo.downloadUrl))
-            .setTitle("LibraryIQ Update ${updateInfo.versionName}")
-            .setDescription("Downloading update...")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
+        val file = File(downloadsDir, fileName)
 
-        val downloadId = downloadManager.enqueue(request)
+        try {
+            // Download with auth header (needed for private repos)
+            val request = githubRequest(updateInfo.downloadUrl)
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                DebugLog.e("AppUpdate", "Download failed: HTTP ${response.code}")
+                return@withContext false
+            }
 
-        // Register receiver to install when download completes
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id == downloadId) {
-                    ctx.unregisterReceiver(this)
-                    installApk(File(downloadsDir, fileName))
+            response.body?.byteStream()?.use { input ->
+                file.outputStream().use { output ->
+                    input.copyTo(output)
                 }
             }
-        }
 
-        context.registerReceiver(
-            receiver,
-            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            Context.RECEIVER_NOT_EXPORTED
-        )
+            if (!file.exists() || file.length() == 0L) {
+                DebugLog.e("AppUpdate", "Downloaded file is empty or missing")
+                return@withContext false
+            }
+
+            DebugLog.d("AppUpdate", "Download complete: ${file.length()} bytes")
+
+            // Launch install on main thread while app is in foreground
+            withContext(Dispatchers.Main) {
+                installApk(file)
+            }
+            true
+        } catch (e: Exception) {
+            DebugLog.e("AppUpdate", "Download/install failed: ${e.message}")
+            file.delete()
+            false
+        }
     }
 
     private fun installApk(file: File) {
