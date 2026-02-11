@@ -42,5 +42,8 @@ jobs:
             echo "Created PR #$PR_NUMBER"
           fi
 
-          # Merge with merge commit (not squash)
-          gh pr merge "$PR_NUMBER" --merge --auto
+          # Wait a moment for PR to be ready
+          sleep 5
+
+          # Merge with merge commit (not squash, not rebase)
+          gh pr merge "$PR_NUMBER" --merge --delete-branch=false
