@@ -167,8 +167,7 @@ class BookRepository @Inject constructor(
         diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
 
         // Collect all ISBN-based results and merge.
-        // Order matters: first source's non-null fields win.
-        // Amazon/Hardcover first for metadata; Apple Books cover applied after merge.
+        // Each field picks the most complete/accurate value across all sources.
         val isbnSources = listOfNotNull(
             amazonBook, hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
         )
@@ -775,23 +774,39 @@ class BookRepository @Inject constructor(
         return incomingSeries // No match — use as-is
     }
 
+    /**
+     * Merges two Book records, picking the most complete value per field.
+     * - Title/author: prefer non-"Unknown", then shorter (less edition cruft)
+     * - Description/subjects: prefer longer (more detail)
+     * - Page count: prefer higher non-zero value
+     * - Series: prefer the source that has both name + number
+     * - IDs: first non-null wins (unique identifiers)
+     */
     private fun mergeBooks(primary: Book, secondary: Book): Book {
-        // Treat pageCount of 0 as missing
-        val primaryPages = primary.pageCount?.takeIf { it > 0 }
-        val secondaryPages = secondary.pageCount?.takeIf { it > 0 }
+        val pPages = primary.pageCount?.takeIf { it > 0 }
+        val sPages = secondary.pageCount?.takeIf { it > 0 }
+
+        // For series, prefer whichever source has both name and number
+        val (bestSeries, bestSeriesNum) = pickBestSeries(
+            primary.series, primary.seriesNumber,
+            secondary.series, secondary.seriesNumber
+        )
+
         return primary.copy(
-            description = primary.description ?: secondary.description,
+            title = pickBestTitle(primary.title, secondary.title),
+            author = pickBestAuthor(primary.author, secondary.author),
+            description = longerOf(primary.description, secondary.description),
             coverUrl = primary.coverUrl ?: secondary.coverUrl,
-            pageCount = primaryPages ?: secondaryPages,
-            publisher = primary.publisher ?: secondary.publisher,
-            publishedDate = primary.publishedDate ?: secondary.publishedDate,
+            pageCount = maxOfNullable(pPages, sPages),
+            publisher = longerOf(primary.publisher, secondary.publisher),
+            publishedDate = moreSpecificDate(primary.publishedDate, secondary.publishedDate),
             isbn10 = primary.isbn10 ?: secondary.isbn10,
-            series = primary.series ?: secondary.series,
-            seriesNumber = primary.seriesNumber ?: secondary.seriesNumber,
-            genre = primary.genre ?: secondary.genre,
+            series = bestSeries,
+            seriesNumber = bestSeriesNum,
+            genre = longerOf(primary.genre, secondary.genre),
             language = primary.language ?: secondary.language,
             format = primary.format ?: secondary.format,
-            subjects = primary.subjects ?: secondary.subjects,
+            subjects = longerOf(primary.subjects, secondary.subjects),
             asin = primary.asin ?: secondary.asin,
             goodreadsId = primary.goodreadsId ?: secondary.goodreadsId,
             openLibraryId = primary.openLibraryId ?: secondary.openLibraryId,
@@ -800,5 +815,67 @@ class BookRepository @Inject constructor(
             originalTitle = primary.originalTitle ?: secondary.originalTitle,
             originalLanguage = primary.originalLanguage ?: secondary.originalLanguage
         )
+    }
+
+    /** Prefer non-"Unknown Title", then shorter (less likely to have edition cruft). */
+    private fun pickBestTitle(a: String, b: String): String {
+        val aReal = a != "Unknown Title"
+        val bReal = b != "Unknown Title"
+        if (aReal && !bReal) return a
+        if (!aReal && bReal) return b
+        if (!aReal && !bReal) return a
+        return if (b.length < a.length) b else a
+    }
+
+    /** Prefer non-"Unknown Author", then longer (more complete author list). */
+    private fun pickBestAuthor(a: String, b: String): String {
+        val aReal = a != "Unknown Author"
+        val bReal = b != "Unknown Author"
+        if (aReal && !bReal) return a
+        if (!aReal && bReal) return b
+        if (!aReal && !bReal) return a
+        return if (b.length > a.length) b else a
+    }
+
+    /** Pick the longer non-null string (more detail = better). */
+    private fun longerOf(a: String?, b: String?): String? {
+        if (a == null) return b
+        if (b == null) return a
+        return if (b.length > a.length) b else a
+    }
+
+    /** Pick the higher non-null value. */
+    private fun maxOfNullable(a: Int?, b: Int?): Int? {
+        if (a == null) return b
+        if (b == null) return a
+        return maxOf(a, b)
+    }
+
+    /** Prefer the more specific date (YYYY-MM-DD > YYYY-MM > YYYY). */
+    private fun moreSpecificDate(a: String?, b: String?): String? {
+        if (a == null) return b
+        if (b == null) return a
+        return if (b.length > a.length) b else a
+    }
+
+    /** Prefer whichever source has both series name and number; otherwise pick the longer name. */
+    private fun pickBestSeries(
+        aName: String?, aNum: String?,
+        bName: String?, bNum: String?
+    ): Pair<String?, String?> {
+        val aHasBoth = aName != null && aNum != null
+        val bHasBoth = bName != null && bNum != null
+        return when {
+            aHasBoth && !bHasBoth -> aName to aNum
+            bHasBoth && !aHasBoth -> bName to bNum
+            aName != null && bName != null -> {
+                // Both have name (with or without number) — pick longer name, keep its number
+                if (bName.length > aName.length) bName to (bNum ?: aNum)
+                else aName to (aNum ?: bNum)
+            }
+            aName != null -> aName to aNum
+            bName != null -> bName to bNum
+            else -> null to null
+        }
     }
 }
