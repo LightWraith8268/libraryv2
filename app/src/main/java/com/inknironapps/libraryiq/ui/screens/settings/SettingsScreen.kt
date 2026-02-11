@@ -444,7 +444,7 @@ fun SettingsScreen(
                         LibraryLayout.entries.forEach { layoutOption ->
                             FilterChip(
                                 selected = libraryPreferences.layout == layoutOption,
-                                onClick = { libraryPreferences.layout = layoutOption },
+                                onClick = { libraryPreferences.setLayout(layoutOption) },
                                 label = { Text(layoutOption.label) }
                             )
                         }
@@ -459,7 +459,7 @@ fun SettingsScreen(
                         Slider(
                             value = libraryPreferences.gridColumns.toFloat(),
                             onValueChange = {
-                                libraryPreferences.gridColumns = it.roundToInt()
+                                libraryPreferences.setGridColumns(it.roundToInt())
                             },
                             valueRange = 2f..5f,
                             steps = 2
@@ -479,7 +479,7 @@ fun SettingsScreen(
                             )
                             Switch(
                                 checked = libraryPreferences.showCovers,
-                                onCheckedChange = { libraryPreferences.showCovers = it }
+                                onCheckedChange = { libraryPreferences.setShowCovers(it) }
                             )
                         }
 
@@ -494,7 +494,7 @@ fun SettingsScreen(
                             )
                             Switch(
                                 checked = libraryPreferences.compactList,
-                                onCheckedChange = { libraryPreferences.compactList = it }
+                                onCheckedChange = { libraryPreferences.setCompactList(it) }
                             )
                         }
                     }
@@ -523,7 +523,7 @@ fun SettingsScreen(
                         SortOption.entries.forEach { option ->
                             FilterChip(
                                 selected = libraryPreferences.defaultSort == option,
-                                onClick = { libraryPreferences.defaultSort = option },
+                                onClick = { libraryPreferences.setDefaultSort(option) },
                                 label = { Text(option.label) }
                             )
                         }
@@ -540,7 +540,7 @@ fun SettingsScreen(
                         GroupOption.entries.forEach { option ->
                             FilterChip(
                                 selected = libraryPreferences.defaultGroup == option,
-                                onClick = { libraryPreferences.defaultGroup = option },
+                                onClick = { libraryPreferences.setDefaultGroup(option) },
                                 label = { Text(option.label) }
                             )
                         }
