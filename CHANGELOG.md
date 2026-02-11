@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.13] - 2026-02-11
+
+### Fixed
+- Fix Amazon scraper returning non-book products for 979 ISBNs, add title-prefix series detection
+
 ## [1.8.12] - 2026-02-11
 
 ### Added
