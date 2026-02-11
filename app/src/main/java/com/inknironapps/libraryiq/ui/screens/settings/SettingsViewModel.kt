@@ -47,7 +47,8 @@ data class SettingsUiState(
     val showClearDataDialog: Boolean = false,
     val dataCleared: Boolean = false,
     val updateInfo: UpdateInfo? = null,
-    val isCheckingUpdate: Boolean = false
+    val isCheckingUpdate: Boolean = false,
+    val isSideloaded: Boolean = false
 )
 
 @HiltViewModel
@@ -97,7 +98,8 @@ class SettingsViewModel @Inject constructor(
                 hasProAccess = billingManager.hasProAccess,
                 isSubscribed = billingManager.isSubscribed.value,
                 isAdmin = billingManager.isAdmin.value,
-                isLibraryCreator = firestoreSync.isLibraryCreator
+                isLibraryCreator = firestoreSync.isLibraryCreator,
+                isSideloaded = appUpdateManager.isSideloaded
             )
         }
     }
