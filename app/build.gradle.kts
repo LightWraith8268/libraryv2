@@ -44,6 +44,11 @@ android {
             ?: System.getenv("GITHUB_REPO")
             ?: "LightWraith8268/libraryv2"
         buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
+
+        val githubToken = localProps.getProperty("GITHUB_TOKEN")
+            ?: System.getenv("GITHUB_TOKEN")
+            ?: ""
+        buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
     }
 
     signingConfigs {

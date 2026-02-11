@@ -39,6 +39,7 @@ class AppUpdateManager @Inject constructor(
 ) {
     private val client = OkHttpClient()
     private val repo = BuildConfig.GITHUB_REPO
+    private val token = BuildConfig.GITHUB_TOKEN
     private val prefs by lazy {
         context.getSharedPreferences("app_update", Context.MODE_PRIVATE)
     }
@@ -69,13 +70,23 @@ class AppUpdateManager @Inject constructor(
         prefs.edit().putString("last_seen_version", BuildConfig.VERSION_NAME).apply()
     }
 
+    /** Builds a GitHub API request with optional token auth for private repos. */
+    private fun githubRequest(url: String): Request {
+        val builder = Request.Builder()
+            .url(url)
+            .header("Accept", "application/vnd.github.v3+json")
+        if (token.isNotBlank()) {
+            builder.header("Authorization", "token $token")
+        }
+        return builder.build()
+    }
+
     suspend fun getWhatsNew(): WhatsNewInfo? = withContext(Dispatchers.IO) {
         try {
             val currentVersion = BuildConfig.VERSION_NAME
-            val request = Request.Builder()
-                .url("https://api.github.com/repos/$repo/releases/tags/v$currentVersion")
-                .header("Accept", "application/vnd.github.v3+json")
-                .build()
+            val request = githubRequest(
+                "https://api.github.com/repos/$repo/releases/tags/v$currentVersion"
+            )
 
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
@@ -101,10 +112,7 @@ class AppUpdateManager @Inject constructor(
 
     suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder()
-                .url("https://api.github.com/repos/$repo/releases")
-                .header("Accept", "application/vnd.github.v3+json")
-                .build()
+            val request = githubRequest("https://api.github.com/repos/$repo/releases")
 
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
@@ -221,15 +229,54 @@ class AppUpdateManager @Inject constructor(
         }
     }
 
-    /** Strips Claude session URLs, PR links, usernames, and other noise from release notes. */
+    /**
+     * Extracts only changelog sections (Added, Changed, Fixed, Removed) from release notes.
+     * Strips all other content like PR links, commit hashes, author attributions, and URLs.
+     */
     private fun sanitizeNotes(raw: String): String {
-        return raw
-            .replace(Regex("""https://claude\.ai/\S*"""), "")
-            .replace(Regex("""\s*by @[\w-]+ in https://github\.com/\S*"""), "")
-            .replace(Regex("""\*?\*?\s*Full Changelog\s*:?\s*https://github\.com/\S*\*?\*?"""), "")
-            .replace(Regex("""Co-authored-by:.*"""), "")
-            .replace(Regex("""\n{3,}"""), "\n\n")
-            .trim()
+        val lines = raw.lines()
+        val result = mutableListOf<String>()
+        var inChangelogSection = false
+        val sectionPattern = Regex("""^###?\s*(Added|Changed|Fixed|Removed)\b""", RegexOption.IGNORE_CASE)
+
+        for (line in lines) {
+            when {
+                sectionPattern.containsMatchIn(line) -> {
+                    inChangelogSection = true
+                    result.add(line.trim())
+                }
+                line.trimStart().startsWith("### ") || line.trimStart().startsWith("## ") -> {
+                    // Non-changelog section header — stop collecting
+                    inChangelogSection = false
+                }
+                inChangelogSection && line.trimStart().startsWith("- ") -> {
+                    // Changelog bullet — clean it up
+                    val cleaned = line.trim()
+                        .replace(Regex("""\s*\(#\d+\)"""), "")       // PR refs like (#42)
+                        .replace(Regex("""\s*by @[\w-]+"""), "")      // author attributions
+                        .replace(Regex("""https?://\S+"""), "")       // URLs
+                        .replace(Regex("""Co-authored-by:.*"""), "")
+                        .replace(Regex("""\s+$"""), "")
+                    if (cleaned.length > 2) result.add(cleaned)
+                }
+                inChangelogSection && line.isBlank() -> {
+                    result.add("")
+                }
+            }
+        }
+
+        val output = result.joinToString("\n").replace(Regex("""\n{3,}"""), "\n\n").trim()
+        // If no changelog sections found, fall back to basic cleanup
+        if (output.isBlank()) {
+            return raw
+                .replace(Regex("""https://\S+"""), "")
+                .replace(Regex("""\s*by @[\w-]+ in \S*"""), "")
+                .replace(Regex("""\*?\*?\s*Full Changelog\s*:?\s*\S*\*?\*?"""), "")
+                .replace(Regex("""Co-authored-by:.*"""), "")
+                .replace(Regex("""\n{3,}"""), "\n\n")
+                .trim()
+        }
+        return output
     }
 
     private fun isNewerVersion(remote: String, current: String): Boolean {
