@@ -46,7 +46,7 @@ jobs:
           VERSION="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
           echo "Version bump: $CURRENT_MAJOR.$CURRENT_MINOR.$CURRENT_PATCH -> $NEW_MAJOR.$NEW_MINOR.$NEW_PATCH (build $NEW_BUILD)"
 
-          # Update gradle.properties locally (will be committed after build)
+          # Update gradle.properties
           sed -i "s/^app.versionMajor=.*/app.versionMajor=$NEW_MAJOR/" gradle.properties
           sed -i "s/^app.versionMinor=.*/app.versionMinor=$NEW_MINOR/" gradle.properties
           sed -i "s/^app.versionPatch=.*/app.versionPatch=$NEW_PATCH/" gradle.properties
@@ -62,6 +62,18 @@ jobs:
           TODAY=$(date +%Y-%m-%d)
           # Update the first ## [x.x.x] header to the new version and today's date
           sed -i "0,/^## \[.*\]/s/^## \[.*\]/## [${VERSION_NAME}] - ${TODAY}/" CHANGELOG.md
+
+      - name: Commit version bump
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILD="${{ steps.version.outputs.version_code }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add gradle.properties CHANGELOG.md
+          git commit -m "chore: bump version to ${VERSION} (build ${BUILD}) [skip ci]"
+          git push origin main
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -167,15 +179,3 @@ jobs:
             --title "LibraryIQ $VERSION (build $BUILD)" \
             --notes-file /tmp/release_notes.md \
             $FILES
-
-      - name: Commit version bump
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          BUILD="${{ steps.version.outputs.version_code }}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
-          git add gradle.properties CHANGELOG.md
-          git commit -m "chore: bump version to ${VERSION} (build ${BUILD}) [skip ci]"
-          git push origin main
