@@ -101,6 +101,7 @@ jobs:
       - name: Build debug APK
         env:
           HARDCOVER_API_TOKEN: ${{ secrets.HARDCOVER_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Decode keystore
@@ -119,6 +120,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           HARDCOVER_API_TOKEN: ${{ secrets.HARDCOVER_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: ./gradlew assembleRelease bundleRelease --no-daemon
 
       - name: Rename build outputs with version
@@ -150,10 +152,13 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES="Release ${{ steps.version.outputs.version_name }}"
           fi
-          # Strip Claude session URLs, PR links, usernames, and co-author trailers
+          # Keep only Added/Changed/Fixed/Removed sections and their bullet points
+          # Strip URLs, PR refs, author attributions, and other noise from bullets
           NOTES=$(echo "$NOTES" | sed \
             -e 's|https://claude\.ai/[^ ]*||g' \
-            -e 's| by @[a-zA-Z0-9_-]* in https://github\.com/[^ ]*||g' \
+            -e 's|https://github\.com/[^ ]*||g' \
+            -e 's| by @[a-zA-Z0-9_-]*||g' \
+            -e 's| *(#[0-9]*))||g' \
             -e 's|\*\* *Full Changelog.*||g' \
             -e '/^Co-authored-by:/d' \
             -e 's/ *$//')
