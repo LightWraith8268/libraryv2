@@ -4,6 +4,14 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.20] - 2026-02-11
+
+### Added
+- Add B&N and Target scrapers, Amazon title+author fallback
+
+### Fixed
+- Fix APK download failing due to wrong Accept header
+
 ## [1.8.19] - 2026-02-11
 
 ### Added
