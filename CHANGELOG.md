@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.24] - 2026-02-11
+
+### Fixed
+- Fix empty series being saved and stale series not clearing on refresh
+
 ## [1.8.23] - 2026-02-11
 
 ### Changed
