@@ -551,7 +551,7 @@ class AmazonMetadataScraper @Inject constructor() {
             .toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
         val expander = expanderRegex.find(html)?.groupValues?.get(1)
         if (expander != null) {
-            val text = stripHtmlTags(expander).trim()
+            val text = stripReadMore(stripHtmlTags(expander).trim())
             if (text.length > 20) return text
         }
 
@@ -560,14 +560,22 @@ class AmazonMetadataScraper @Inject constructor() {
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         val iframe = iframeRegex.find(html)?.groupValues?.get(1)
         if (iframe != null) {
-            val text = stripHtmlTags(iframe).trim()
+            val text = stripReadMore(stripHtmlTags(iframe).trim())
             if (text.length > 20) return text
         }
 
         val desc = extractMeta(html, "description")
-        if (desc != null && desc.length > 20) return desc
+        if (desc != null && desc.length > 20) return stripReadMore(desc)
 
         return null
+    }
+
+    /** Strip trailing "Read more" / "Read less" artifacts from scraped descriptions. */
+    private fun stripReadMore(text: String): String {
+        return text
+            .replace(Regex("""\s*Read\s*more\.?\s*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*Read\s*less\.?\s*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
     }
 
     // =====================================================================
