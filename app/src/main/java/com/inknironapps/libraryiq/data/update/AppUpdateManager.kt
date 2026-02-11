@@ -43,6 +43,17 @@ class AppUpdateManager @Inject constructor(
         context.getSharedPreferences("app_update", Context.MODE_PRIVATE)
     }
 
+    /** True if app was sideloaded (not installed from Google Play). */
+    val isSideloaded: Boolean by lazy {
+        val installer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getInstallerPackageName(context.packageName)
+        }
+        installer != "com.android.vending"
+    }
+
     private val lastSeenVersion: String?
         get() = prefs.getString("last_seen_version", null)
 

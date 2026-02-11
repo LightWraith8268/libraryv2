@@ -630,18 +630,21 @@ fun SettingsScreen(
                 }
             }
 
-            OutlinedButton(
-                onClick = viewModel::checkForUpdate,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !uiState.isCheckingUpdate
-            ) {
-                if (uiState.isCheckingUpdate) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                } else {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = null)
+            // Only show update checker for sideloaded installs (not from Google Play)
+            if (uiState.isSideloaded) {
+                OutlinedButton(
+                    onClick = viewModel::checkForUpdate,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isCheckingUpdate
+                ) {
+                    if (uiState.isCheckingUpdate) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    } else {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (uiState.isCheckingUpdate) "Checking..." else "Check for Updates")
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(if (uiState.isCheckingUpdate) "Checking..." else "Check for Updates")
             }
 
             Spacer(modifier = Modifier.height(32.dp))
