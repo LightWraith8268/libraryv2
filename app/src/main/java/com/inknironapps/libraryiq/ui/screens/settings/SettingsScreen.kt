@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
@@ -441,6 +442,15 @@ fun SettingsScreen(
                 text = "Data Management",
                 style = MaterialTheme.typography.titleLarge
             )
+
+            OutlinedButton(
+                onClick = { viewModel.exportLibraryCsv(context as android.app.Activity) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Share, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Export Library as CSV")
+            }
 
             Button(
                 onClick = viewModel::showClearDataDialog,

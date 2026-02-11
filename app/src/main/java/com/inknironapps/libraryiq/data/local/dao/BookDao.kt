@@ -52,6 +52,9 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :bookId")
     suspend fun deleteBookById(bookId: String)
 
+    @Query("SELECT * FROM books ORDER BY title ASC")
+    suspend fun getAllBooksList(): List<Book>
+
     @Query("SELECT COUNT(*) FROM books")
     fun getBookCount(): Flow<Int>
 

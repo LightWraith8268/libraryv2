@@ -2,6 +2,9 @@ package com.inknironapps.libraryiq.ui.screens.settings
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -12,11 +15,17 @@ import com.inknironapps.libraryiq.data.local.AppDatabase
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -223,5 +232,64 @@ class SettingsViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun exportLibraryCsv(activity: Activity) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(message = "Exporting...") }
+                val csvFile = withContext(Dispatchers.IO) {
+                    val books = database.bookDao().getAllBooksList()
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                    val file = File(context.cacheDir, "LibraryIQ_export_$timestamp.csv")
+                    file.bufferedWriter().use { writer ->
+                        writer.write("Title,Author,ISBN,ISBN-10,Reading Status,Rating,Series,Series Number,Genre,Page Count,Publisher,Published Date,Date Added,Notes,Tags")
+                        writer.newLine()
+                        for (book in books) {
+                            writer.write(listOf(
+                                book.title.csvEscape(),
+                                book.author.csvEscape(),
+                                book.isbn.orEmpty(),
+                                book.isbn10.orEmpty(),
+                                book.readingStatus.name,
+                                book.rating?.toString().orEmpty(),
+                                book.series?.csvEscape().orEmpty(),
+                                book.seriesNumber.orEmpty(),
+                                book.genre?.csvEscape().orEmpty(),
+                                book.pageCount?.toString().orEmpty(),
+                                book.publisher?.csvEscape().orEmpty(),
+                                book.publishedDate.orEmpty(),
+                                book.dateAdded.toString(),
+                                book.notes?.csvEscape().orEmpty(),
+                                book.tags?.csvEscape().orEmpty()
+                            ).joinToString(","))
+                            writer.newLine()
+                        }
+                    }
+                    file
+                }
+
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    csvFile
+                )
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                activity.startActivity(Intent.createChooser(shareIntent, "Export Library"))
+                _uiState.update { it.copy(message = null) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Export failed: ${e.message}") }
+            }
+        }
+    }
+
+    private fun String.csvEscape(): String {
+        return if (contains(',') || contains('"') || contains('\n')) {
+            "\"${replace("\"", "\"\"")}\""
+        } else this
     }
 }
