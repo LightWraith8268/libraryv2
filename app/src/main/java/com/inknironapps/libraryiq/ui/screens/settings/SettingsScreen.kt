@@ -35,15 +35,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -64,19 +61,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
-import com.inknironapps.libraryiq.ui.screens.library.GroupOption
-import com.inknironapps.libraryiq.ui.screens.library.LibraryLayout
-import com.inknironapps.libraryiq.ui.screens.library.LibraryPreferences
-import com.inknironapps.libraryiq.ui.screens.library.SortOption
 import com.inknironapps.libraryiq.util.DebugLog
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     navController: NavController,
-    viewModel: SettingsViewModel = hiltViewModel(),
-    libraryPreferences: LibraryPreferences = viewModel.libraryPreferences
+    viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
@@ -413,139 +404,6 @@ fun SettingsScreen(
             }
             uiState.message?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-            }
-
-            HorizontalDivider()
-
-            // --- Library Display ---
-            Text(
-                text = "Library Display",
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            // Layout mode
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Layout",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        LibraryLayout.entries.forEach { layoutOption ->
-                            FilterChip(
-                                selected = libraryPreferences.layout == layoutOption,
-                                onClick = { libraryPreferences.setLayout(layoutOption) },
-                                label = { Text(layoutOption.label) }
-                            )
-                        }
-                    }
-
-                    // Grid columns (only when grid is selected)
-                    if (libraryPreferences.layout == LibraryLayout.GRID) {
-                        Text(
-                            text = "Grid Columns: ${libraryPreferences.gridColumns}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Slider(
-                            value = libraryPreferences.gridColumns.toFloat(),
-                            onValueChange = {
-                                libraryPreferences.setGridColumns(it.roundToInt())
-                            },
-                            valueRange = 2f..5f,
-                            steps = 2
-                        )
-                    }
-
-                    // List-specific options
-                    if (libraryPreferences.layout == LibraryLayout.LIST) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Show Cover Images",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Switch(
-                                checked = libraryPreferences.showCovers,
-                                onCheckedChange = { libraryPreferences.setShowCovers(it) }
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Compact List",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Switch(
-                                checked = libraryPreferences.compactList,
-                                onCheckedChange = { libraryPreferences.setCompactList(it) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Default sort & group
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Default Sort",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SortOption.entries.forEach { option ->
-                            FilterChip(
-                                selected = libraryPreferences.defaultSort == option,
-                                onClick = { libraryPreferences.setDefaultSort(option) },
-                                label = { Text(option.label) }
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "Default Grouping",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        GroupOption.entries.forEach { option ->
-                            FilterChip(
-                                selected = libraryPreferences.defaultGroup == option,
-                                onClick = { libraryPreferences.setDefaultGroup(option) },
-                                label = { Text(option.label) }
-                            )
-                        }
-                    }
-                }
             }
 
             HorizontalDivider()
