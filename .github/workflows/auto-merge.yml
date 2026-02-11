@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
 
     steps:
       - name: Checkout code
@@ -18,10 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create or update PR and merge
+      - name: Create PR, merge, and trigger release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -x
           BRANCH="${{ github.ref_name }}"
           COMMIT_MSG=$(git log -1 --pretty=%s)
 
@@ -30,20 +32,27 @@ jobs:
 
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists, merging..."
-            PR_NUMBER=$EXISTING_PR
+            PR_NUMBER="$EXISTING_PR"
           else
             echo "Creating PR from $BRANCH to main..."
-            PR_URL=$(gh pr create \
+            PR_NUMBER=$(gh pr create \
               --base main \
               --head "$BRANCH" \
               --title "$COMMIT_MSG" \
-              --body "Auto-merge from $BRANCH")
-            PR_NUMBER=$(echo "$PR_URL" | grep -oP '\d+$')
+              --body "Auto-merge from $BRANCH" 2>&1 | tail -1 | rev | cut -d'/' -f1 | rev)
             echo "Created PR #$PR_NUMBER"
           fi
 
-          # Wait a moment for PR to be ready
+          # Wait for PR to be ready
           sleep 5
 
           # Merge with merge commit (not squash, not rebase)
+          echo "Merging PR #$PR_NUMBER..."
           gh pr merge "$PR_NUMBER" --merge --delete-branch=false
+
+          echo "Merge complete. Triggering release workflow..."
+
+          # GITHUB_TOKEN pushes/merges don't trigger on:push workflows,
+          # but workflow_dispatch is an exception — trigger release explicitly
+          gh workflow run release.yml
+          echo "Release workflow triggered."
