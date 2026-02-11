@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.21] - 2026-02-11
+
+### Fixed
+- Fix wrong cover and metadata for multi-edition books (e.g. Daydream deluxe hardcover)
+
 ## [1.8.20] - 2026-02-11
 
 ### Added
