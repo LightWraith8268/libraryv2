@@ -4,6 +4,14 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.16] - 2026-02-11
+
+### Changed
+- Preserve manually chosen covers during metadata refresh
+
+### Fixed
+- Fix series strip regex for (Series, N) format and improve title-prefix matching
+
 ## [1.8.15] - 2026-02-11
 
 ### Changed
