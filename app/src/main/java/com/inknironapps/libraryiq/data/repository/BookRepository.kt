@@ -168,7 +168,7 @@ class BookRepository @Inject constructor(
 
         // Collect all ISBN-based results and merge.
         // Order matters: first source's non-null fields win.
-        // Amazon/Hardcover have the best covers, so put them first.
+        // Amazon/Hardcover first for metadata; Apple Books cover applied after merge.
         val isbnSources = listOfNotNull(
             amazonBook, hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
         )
@@ -201,6 +201,15 @@ class BookRepository @Inject constructor(
         // Standardize series name to match existing books in the library
         if (merged.series != null) {
             merged = merged.copy(series = standardizeSeriesName(merged.series!!))
+        }
+
+        // 8. Apple Books cover (preferred source - high quality artwork)
+        val appleCover = tryAppleBooksCover(merged.title, merged.author)
+        if (appleCover != null) {
+            merged = merged.copy(coverUrl = appleCover)
+            diag.add("Apple: cover")
+        } else {
+            diag.add("Apple: miss")
         }
 
         val diagStr = diag.joinToString(" | ")
@@ -583,6 +592,24 @@ class BookRepository @Inject constructor(
             DebugLog.e(TAG, "iTunes covers error: ${e.message}")
         }
         return results
+    }
+
+    /**
+     * Fetches the best Apple Books cover for a book by title+author.
+     * Returns the first matching high-res (600x600) cover URL, or null.
+     */
+    private suspend fun tryAppleBooksCover(title: String, author: String): String? {
+        return try {
+            val searchTerm = if (author != "Unknown Author") "$title $author" else title
+            val response = iTunesApiService.searchEbooks(searchTerm, limit = 1)
+            response.results?.firstOrNull()?.getHighResCoverUrl().also {
+                DebugLog.d(TAG, "Apple Books cover: ${if (it != null) "found" else "not found"} for '$searchTerm'")
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Apple Books cover error: ${e.message}")
+            lastErrors.add("Apple: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
     }
 
     companion object {
