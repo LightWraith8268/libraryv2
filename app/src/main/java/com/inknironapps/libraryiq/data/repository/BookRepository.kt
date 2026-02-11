@@ -183,16 +183,14 @@ class BookRepository @Inject constructor(
             mergeBooks(acc, book)
         }
 
-        // 7. Title-based enrichment: if metadata is incomplete, search by title+author
-        if (needsEnrichment(merged)) {
-            DebugLog.d(TAG, "Metadata incomplete, enriching by title: '${merged.title}' by '${merged.author}'")
-            val titleSources = searchByTitle(merged.title, merged.author, isbn)
-            for (enrichment in titleSources) {
-                merged = mergeBooks(merged, enrichment)
-            }
-            if (titleSources.isNotEmpty()) {
-                diag.add("title-enrich: ${titleSources.size} hit(s)")
-            }
+        // 7. Title-based enrichment: always search by title+author for additional metadata
+        DebugLog.d(TAG, "Enriching by title: '${merged.title}' by '${merged.author}'")
+        val titleSources = searchByTitle(merged.title, merged.author, isbn)
+        for (enrichment in titleSources) {
+            merged = mergeBooks(merged, enrichment)
+        }
+        if (titleSources.isNotEmpty()) {
+            diag.add("title-enrich: ${titleSources.size} hit(s)")
         }
 
         // Clean up the final title - strip edition/format suffixes and series parentheticals
@@ -261,12 +259,12 @@ class BookRepository @Inject constructor(
             baseTitle
         }
 
-        // Google Books title search (use full title first for edition match)
+        // Google Books title search (quote multi-word values for exact matching)
         try {
             val query = if (author != "Unknown Author") {
-                "intitle:$baseTitle inauthor:$author"
+                "intitle:\"$baseTitle\" inauthor:\"$author\""
             } else {
-                "intitle:$baseTitle"
+                "intitle:\"$baseTitle\""
             }
             val response = bookApiService.searchByIsbn(query)
             val bestMatch = response.items?.firstOrNull()
