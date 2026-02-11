@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -17,6 +18,7 @@ import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.theme.StatusRead
 import com.inknironapps.libraryiq.ui.theme.StatusReading
 import com.inknironapps.libraryiq.ui.theme.StatusUnread
+import com.inknironapps.libraryiq.ui.theme.StatusWantToBuy
 import com.inknironapps.libraryiq.ui.theme.StatusWantToRead
 
 @Composable
@@ -31,6 +33,7 @@ fun ReadingStatusChip(
         ReadingStatus.READING -> Triple("Reading", Icons.Default.AutoStories, StatusReading)
         ReadingStatus.READ -> Triple("Read", Icons.Default.CheckCircle, StatusRead)
         ReadingStatus.WANT_TO_READ -> Triple("Want to Read", Icons.Default.BookmarkAdd, StatusWantToRead)
+        ReadingStatus.WANT_TO_BUY -> Triple("Want to Buy", Icons.Default.ShoppingCart, StatusWantToBuy)
     }
 
     FilterChip(
@@ -58,4 +61,5 @@ fun ReadingStatus.displayName(): String = when (this) {
     ReadingStatus.READING -> "Reading"
     ReadingStatus.READ -> "Read"
     ReadingStatus.WANT_TO_READ -> "Want to Read"
+    ReadingStatus.WANT_TO_BUY -> "Want to Buy"
 }

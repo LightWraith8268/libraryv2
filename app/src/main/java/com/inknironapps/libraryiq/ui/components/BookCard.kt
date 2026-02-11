@@ -30,6 +30,7 @@ import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.theme.StatusRead
 import com.inknironapps.libraryiq.ui.theme.StatusReading
 import com.inknironapps.libraryiq.ui.theme.StatusUnread
+import com.inknironapps.libraryiq.ui.theme.StatusWantToBuy
 import com.inknironapps.libraryiq.ui.theme.StatusWantToRead
 
 @Composable
@@ -113,6 +114,7 @@ fun BookCard(
                     ReadingStatus.READING -> StatusReading
                     ReadingStatus.READ -> StatusRead
                     ReadingStatus.WANT_TO_READ -> StatusWantToRead
+                    ReadingStatus.WANT_TO_BUY -> StatusWantToBuy
                     ReadingStatus.UNREAD -> StatusUnread
                 }
 

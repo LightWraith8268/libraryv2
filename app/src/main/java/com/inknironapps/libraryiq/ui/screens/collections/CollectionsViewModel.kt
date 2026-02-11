@@ -23,6 +23,10 @@ class CollectionsViewModel @Inject constructor(
         collectionRepository.getAllCollectionsWithBooks()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    init {
+        viewModelScope.launch { collectionRepository.ensureDefaultCollections() }
+    }
+
     private val _showCreateDialog = MutableStateFlow(false)
     val showCreateDialog: StateFlow<Boolean> = _showCreateDialog.asStateFlow()
 

@@ -245,6 +245,7 @@ class LibraryViewModel @Inject constructor(
         ReadingStatus.READING -> "Reading"
         ReadingStatus.READ -> "Read"
         ReadingStatus.WANT_TO_READ -> "Want to Read"
+        ReadingStatus.WANT_TO_BUY -> "Want to Buy"
     }
 }
 
