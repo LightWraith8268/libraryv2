@@ -7,17 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [1.8.3] - 2026-02-11
 
 ### Added
-- In-app update checker — download and install updates directly from GitHub releases
-- "What's New" dialog on first launch after updating
+- In-app update checker — download and install updates directly from GitHub releases (sideloaded installs only)
+- "What's New" dialog on first launch after updating with sanitized release notes
 - Stats dashboard with reading insights (books by status, top authors/genres, yearly activity)
 - "Want to Buy" reading status with automatic collection management
 - Continuous barcode scan mode (toggle in Settings > Scanner)
 - CSV library export (Settings > Data Management)
 - Offline sync indicator in Settings
 - Force sync button to fully reconcile local library with cloud
-- Apple Books as default cover source for all book lookups
+- Apple Books as default high-resolution cover source for all book lookups (600x600 artwork)
+- iTunes Search API integration for cover art (no API key required)
 - Series name standardization to prevent duplicate series entries from different metadata sources
-- GitHub Actions release workflow with versioned APKs and auto version bump
+- Smart metadata merge — per-field quality selection (longest description, highest page count, most specific date, best series pair)
+- Auto PR & Merge workflow — pushes to `claude/*` branches auto-create PR, merge to main, and trigger release
+- GitHub Actions release workflow with automatic semantic version bumping, changelog updates, versioned APKs, and GitHub Release creation
+- Sideload detection — hides in-app update checker for Google Play Store installs
 
 ### Changed
 - Pro subscription now only required for multi-device sync; creating and joining libraries is free for all users
@@ -26,14 +30,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Cover image priority: Apple Books > Amazon > Hardcover > Open Library > Google Books
 - Author names sorted by last name in library view
 - Refresh metadata now updates existing fields with fresh data instead of only filling blanks
-- Build workflow consolidated into release workflow
+- Title enrichment (Phase 2) always runs regardless of field completeness for maximum metadata coverage
+- Google Books API uses unauthenticated requests (1000/day) instead of Firebase API key
+- Google Books title queries use quoted phrases for accurate multi-word matching
+- Version bump committed before build so build failures don't block version progression
+- Release workflow auto-updates CHANGELOG.md version header with bumped version and date
 
 ### Fixed
 - Book deletions now sync correctly to other library members via Firestore document change detection
 - Google Books API returning no results due to Firebase API key not authorized for Books API
-- Google Books title search query encoding — operators were broken by URL-encoding of + character
+- Google Books title search query encoding — `+` separator was URL-encoded as `%2B` instead of space
+- Refresh metadata not applying series name standardization (was keeping old unstandardized name)
 - Subscription upsell no longer shown to users who joined a library (they sync free)
 - Library code text updates based on Pro status
+- Release workflow version bump not persisting due to detached HEAD from `actions/checkout`
+- Release workflow `git pull --rebase` failing with unstaged changes after sed modifications
+- Auto-merge workflow `grep -oP` not available on Ubuntu runner — replaced with `rev | cut`
+- Auto-merge workflow not triggering release — GITHUB_TOKEN merges don't fire `on: push`, now uses `gh workflow run`
 
 ## [1.3.0] - 2026-02-09
 
