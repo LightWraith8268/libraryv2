@@ -80,7 +80,7 @@ class AppUpdateManager @Inject constructor(
 
             WhatsNewInfo(
                 versionName = currentVersion,
-                releaseNotes = notes
+                releaseNotes = sanitizeNotes(notes)
             )
         } catch (e: Exception) {
             DebugLog.e("AppUpdate", "What's new fetch failed: ${e.message}")
@@ -137,7 +137,7 @@ class AppUpdateManager @Inject constructor(
                 tagName = tagName,
                 versionName = remoteVersion,
                 downloadUrl = downloadUrl,
-                releaseNotes = releaseNotes,
+                releaseNotes = sanitizeNotes(releaseNotes),
                 isNewer = isNewer
             )
         } catch (e: Exception) {
@@ -197,6 +197,17 @@ class AppUpdateManager @Inject constructor(
         } catch (e: Exception) {
             DebugLog.e("AppUpdate", "Install failed: ${e.message}")
         }
+    }
+
+    /** Strips Claude session URLs, PR links, usernames, and other noise from release notes. */
+    private fun sanitizeNotes(raw: String): String {
+        return raw
+            .replace(Regex("""https://claude\.ai/\S*"""), "")
+            .replace(Regex("""\s*by @[\w-]+ in https://github\.com/\S*"""), "")
+            .replace(Regex("""\*?\*?\s*Full Changelog\s*:?\s*https://github\.com/\S*\*?\*?"""), "")
+            .replace(Regex("""Co-authored-by:.*"""), "")
+            .replace(Regex("""\n{3,}"""), "\n\n")
+            .trim()
     }
 
     private fun isNewerVersion(remote: String, current: String): Boolean {
