@@ -238,11 +238,23 @@ class BookRepository @Inject constructor(
             }
         }
 
-        // 7. Title-based enrichment: always search by title+author for additional metadata
+        // 7. Title-based enrichment: search by title+author for additional metadata
+        // (especially series info). Save edition-specific fields first because title
+        // searches may return a different edition (e.g. paperback instead of hardcover).
+        val isbnPageCount = merged.pageCount?.takeIf { it > 0 }
+        val isbnPublishedDate = merged.publishedDate
         DebugLog.d(TAG, "Enriching by title: '${merged.title}' by '${merged.author}'")
         val titleSources = searchByTitle(merged.title, merged.author, isbn)
         for (enrichment in titleSources) {
             merged = mergeBooks(merged, enrichment)
+        }
+        // Restore edition-specific fields from ISBN-based sources — title searches
+        // can't distinguish editions, so their pageCount/publishedDate may be wrong.
+        if (isbnPageCount != null) {
+            merged = merged.copy(pageCount = isbnPageCount)
+        }
+        if (isbnPublishedDate != null) {
+            merged = merged.copy(publishedDate = isbnPublishedDate)
         }
         if (titleSources.isNotEmpty()) {
             diag.add("title-enrich: ${titleSources.size} hit(s)")
@@ -313,13 +325,20 @@ class BookRepository @Inject constructor(
             }
         }
 
-        // 8. Apple Books cover (preferred source - high quality artwork)
-        val appleCover = tryAppleBooksCover(merged.title, merged.author)
-        if (appleCover != null) {
-            merged = merged.copy(coverUrl = appleCover)
-            diag.add("Apple: cover")
+        // 8. Apple Books cover (fallback only - high quality but can't filter by edition)
+        // Only use Apple Books cover if no ISBN-based source provided one, because
+        // Apple Books searches by title+author and may return a different edition's cover
+        // (e.g. paperback cover instead of deluxe hardcover).
+        if (merged.coverUrl == null) {
+            val appleCover = tryAppleBooksCover(merged.title, merged.author)
+            if (appleCover != null) {
+                merged = merged.copy(coverUrl = appleCover)
+                diag.add("Apple: cover (fallback)")
+            } else {
+                diag.add("Apple: miss")
+            }
         } else {
-            diag.add("Apple: miss")
+            diag.add("Apple: skipped (ISBN cover exists)")
         }
 
         val diagStr = diag.joinToString(" | ")
@@ -455,7 +474,13 @@ class BookRepository @Inject constructor(
     private suspend fun tryGoogleBooksGeneral(isbn: String): Book? {
         return try {
             val response = bookApiService.searchByIsbn(isbn)
-            response.items?.firstOrNull()?.let { googleBookToBook(it, isbn) }.also {
+            // Validate the result actually contains the scanned ISBN — plain-text search
+            // can match a different edition (e.g. paperback instead of deluxe hardcover).
+            val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) convertIsbn13ToIsbn10(isbn) else null
+            response.items?.firstOrNull { item ->
+                val ids = item.volumeInfo.industryIdentifiers?.map { it.identifier } ?: emptyList()
+                ids.contains(isbn) || (isbn10 != null && ids.contains(isbn10))
+            }?.let { googleBookToBook(it, isbn) }.also {
                 DebugLog.d(TAG, "Google Books (general): ${it?.title ?: "not found"}")
             }
         } catch (e: Exception) {
