@@ -33,7 +33,16 @@ data class WhatsNewInfo(
 class AppUpdateManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val client = OkHttpClient()
+    /** Short-timeout client for GitHub API calls. */
+    private val apiClient = OkHttpClient()
+
+    /** Long-timeout client for downloading large APK files. */
+    private val downloadClient = OkHttpClient.Builder()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
+
     private val repo = BuildConfig.GITHUB_REPO
     private val token = BuildConfig.GITHUB_TOKEN
     private val prefs by lazy {
@@ -84,7 +93,7 @@ class AppUpdateManager @Inject constructor(
                 "https://api.github.com/repos/$repo/releases/tags/v$currentVersion"
             )
 
-            val response = client.newCall(request).execute()
+            val response = apiClient.newCall(request).execute()
             if (!response.isSuccessful) {
                 DebugLog.d("AppUpdate", "No release found for v$currentVersion: ${response.code}")
                 return@withContext null
@@ -110,7 +119,7 @@ class AppUpdateManager @Inject constructor(
         try {
             val request = githubRequest("https://api.github.com/repos/$repo/releases")
 
-            val response = client.newCall(request).execute()
+            val response = apiClient.newCall(request).execute()
             if (!response.isSuccessful) {
                 DebugLog.e("AppUpdate", "GitHub API error: ${response.code}")
                 return@withContext null
@@ -189,13 +198,23 @@ class AppUpdateManager @Inject constructor(
         val file = File(downloadsDir, fileName)
 
         try {
-            // Download with auth header (needed for private repos)
-            val request = githubRequest(updateInfo.downloadUrl)
-            val response = client.newCall(request).execute()
+            // Build download request — use Accept: application/octet-stream for binary,
+            // NOT the GitHub API media type (which would return JSON metadata).
+            val requestBuilder = Request.Builder()
+                .url(updateInfo.downloadUrl)
+                .header("Accept", "application/octet-stream")
+            if (token.isNotBlank()) {
+                requestBuilder.header("Authorization", "token $token")
+            }
+            val response = downloadClient.newCall(requestBuilder.build()).execute()
             if (!response.isSuccessful) {
-                DebugLog.e("AppUpdate", "Download failed: HTTP ${response.code}")
+                DebugLog.e("AppUpdate", "Download failed: HTTP ${response.code} from ${updateInfo.downloadUrl}")
                 return@withContext false
             }
+
+            val contentType = response.header("Content-Type")
+            val contentLength = response.header("Content-Length")?.toLongOrNull()
+            DebugLog.d("AppUpdate", "Download response: type=$contentType, length=$contentLength")
 
             response.body?.byteStream()?.use { input ->
                 file.outputStream().use { output ->
@@ -208,7 +227,15 @@ class AppUpdateManager @Inject constructor(
                 return@withContext false
             }
 
-            DebugLog.d("AppUpdate", "Download complete: ${file.length()} bytes")
+            // Sanity check: APK files start with PK (zip magic bytes) and should be > 100KB
+            val magic = file.inputStream().use { it.read() * 256 + it.read() }
+            if (magic != 0x504B) { // 'P' 'K'
+                DebugLog.e("AppUpdate", "Downloaded file is not a valid APK (magic: 0x${magic.toString(16)}), size: ${file.length()}")
+                file.delete()
+                return@withContext false
+            }
+
+            DebugLog.d("AppUpdate", "Download complete: ${file.length()} bytes, valid APK")
 
             // Launch install on main thread while app is in foreground
             withContext(Dispatchers.Main) {
