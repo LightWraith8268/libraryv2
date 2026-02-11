@@ -335,13 +335,31 @@ fun SettingsScreen(
                         }
                     }
 
-                    OutlinedButton(
-                        onClick = viewModel::leaveLibrary,
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.CloudOff, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Leave Library")
+                        OutlinedButton(
+                            onClick = viewModel::forceSync,
+                            modifier = Modifier.weight(1f),
+                            enabled = !uiState.isLoading
+                        ) {
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            } else {
+                                Icon(Icons.Default.Sync, contentDescription = null)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Force Sync")
+                        }
+                        OutlinedButton(
+                            onClick = viewModel::leaveLibrary,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.CloudOff, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Leave Library")
+                        }
                     }
                 } else {
                     // No library yet - create or join

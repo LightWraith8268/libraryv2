@@ -198,6 +198,11 @@ class BookRepository @Inject constructor(
         // Clean up the final title - strip edition/format suffixes and series parentheticals
         merged = merged.copy(title = cleanTitle(merged.title, merged.series))
 
+        // Standardize series name to match existing books in the library
+        if (merged.series != null) {
+            merged = merged.copy(series = standardizeSeriesName(merged.series!!))
+        }
+
         val diagStr = diag.joinToString(" | ")
         DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
             "[cover=${merged.coverUrl != null}, desc=${merged.description != null}, " +
@@ -714,6 +719,35 @@ class BookRepository @Inject constructor(
             )
         }
         return cleaned.trim()
+    }
+
+    /**
+     * Normalizes a series name for comparison by stripping common suffixes
+     * like "Series", "Trilogy", "Saga", "Duology", "Quartet", "Cycle".
+     */
+    private fun normalizeSeriesForComparison(name: String): String {
+        return name.trim()
+            .replace(Regex("""\s+(?:Series|Trilogy|Saga|Duology|Quartet|Cycle)\s*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
+    /**
+     * Checks existing series names in the library and matches the incoming
+     * series name to an established one if they normalize to the same value.
+     * E.g. "The Maple Hill" matches "The Maple Hill Series" → uses "The Maple Hill Series".
+     */
+    private suspend fun standardizeSeriesName(incomingSeries: String): String {
+        val normalizedIncoming = normalizeSeriesForComparison(incomingSeries)
+        val existingNames = bookDao.getAllSeriesNames()
+
+        for (existing in existingNames) {
+            val normalizedExisting = normalizeSeriesForComparison(existing)
+            if (normalizedIncoming.equals(normalizedExisting, ignoreCase = true)) {
+                return existing // Use the established name from the library
+            }
+        }
+
+        return incomingSeries // No match — use as-is
     }
 
     private fun mergeBooks(primary: Book, secondary: Book): Book {

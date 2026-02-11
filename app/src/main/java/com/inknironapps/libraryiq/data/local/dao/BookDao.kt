@@ -78,6 +78,9 @@ interface BookDao {
 
     @Query("SELECT COUNT(*) FROM books WHERE readingStatus = 'READ' AND dateFinished >= :since")
     suspend fun getBooksFinishedSince(since: Long): Int
+
+    @Query("SELECT DISTINCT series FROM books WHERE series IS NOT NULL AND series != ''")
+    suspend fun getAllSeriesNames(): List<String>
 }
 
 data class AuthorCount(val author: String, val cnt: Int)
