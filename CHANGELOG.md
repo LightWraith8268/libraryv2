@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.12] - 2026-02-11
+
+### Added
+- Auto-generate per-release changelog from commits since last tag
+
 ## [1.8.11] - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11
 
 ### Added
