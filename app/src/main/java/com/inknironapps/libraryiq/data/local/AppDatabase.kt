@@ -29,13 +29,20 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Track whether user manually chose a cover (should survive metadata refresh)
+        db.execSQL("ALTER TABLE books ADD COLUMN coverManuallySet INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         Book::class,
         Collection::class,
         BookCollectionCrossRef::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

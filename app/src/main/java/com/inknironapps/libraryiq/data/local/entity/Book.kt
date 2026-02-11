@@ -36,6 +36,8 @@ data class Book(
     val edition: String? = null,
     val originalTitle: String? = null,
     val originalLanguage: String? = null,
+    // Cover tracking: true when user manually chose a cover via the cover picker
+    val coverManuallySet: Boolean = false,
     // Per-user reading tracking
     val dateStarted: Long? = null,
     val dateFinished: Long? = null,
