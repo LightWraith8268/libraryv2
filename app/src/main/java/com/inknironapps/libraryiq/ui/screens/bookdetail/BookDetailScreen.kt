@@ -331,16 +331,26 @@ fun BookDetailScreen(
                 }
 
                 // --- Description ---
-                if (!book.description.isNullOrBlank()) {
+                if (uiState.isEditing || !book.description.isNullOrBlank()) {
                     HorizontalDivider()
                     Text(
                         text = "Description",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    Text(
-                        text = book.description,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    if (uiState.isEditing) {
+                        OutlinedTextField(
+                            value = uiState.editDescription,
+                            onValueChange = viewModel::onEditDescriptionChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 10,
+                            placeholder = { Text("Book description...") }
+                        )
+                    } else {
+                        Text(
+                            text = book.description!!,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
 
                 // --- Full Metadata ---
@@ -350,77 +360,232 @@ fun BookDetailScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
+                if (uiState.isEditing) {
                     Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ClickableMetadataRow(
-                            label = "Author",
-                            value = book.author,
-                            onClick = {
-                                navController.navigate(
-                                    Screen.Library.createRoute(filterAuthor = book.author)
-                                )
-                            }
-                        )
-
-                        if (!book.series.isNullOrBlank()) {
-                            ClickableMetadataRow(
-                                label = "Series",
-                                value = buildString {
-                                    append(book.series)
-                                    if (!book.seriesNumber.isNullOrBlank()) {
-                                        append(" #${book.seriesNumber}")
-                                    }
-                                },
-                                onClick = {
-                                    navController.navigate(
-                                        Screen.Library.createRoute(filterSeries = book.series)
-                                    )
-                                }
+                        // Series
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.editSeries,
+                                onValueChange = viewModel::onEditSeriesChange,
+                                label = { Text("Series") },
+                                modifier = Modifier.weight(2f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.editSeriesNumber,
+                                onValueChange = viewModel::onEditSeriesNumberChange,
+                                label = { Text("Series #") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
 
-                        book.publisher?.let { MetadataRow("Publisher", it) }
-                        book.publishedDate?.let { MetadataRow("Published", it) }
-                        book.pageCount?.let { MetadataRow("Pages", it.toString()) }
-                        book.edition?.let { MetadataRow("Edition", it) }
-
-                        if (!book.isbn.isNullOrBlank()) {
-                            MetadataRow("ISBN-13", book.isbn)
+                        // Publisher + Published Date
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.editPublisher,
+                                onValueChange = viewModel::onEditPublisherChange,
+                                label = { Text("Publisher") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.editPublishedDate,
+                                onValueChange = viewModel::onEditPublishedDateChange,
+                                label = { Text("Published") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
                         }
-                        if (!book.isbn10.isNullOrBlank()) {
-                            MetadataRow("ISBN-10", book.isbn10)
+
+                        // Pages + Edition
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.editPageCount,
+                                onValueChange = viewModel::onEditPageCountChange,
+                                label = { Text("Pages") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            OutlinedTextField(
+                                value = uiState.editEdition,
+                                onValueChange = viewModel::onEditEditionChange,
+                                label = { Text("Edition") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
                         }
 
-                        book.language?.let { MetadataRow("Language", it) }
-                        book.format?.let { MetadataRow("Format", it) }
-                        book.genre?.let { MetadataRow("Genre", it) }
-
-                        if (!book.subjects.isNullOrBlank()) {
-                            MetadataRow("Subjects", book.subjects)
+                        // ISBN-13 + ISBN-10
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.editIsbn,
+                                onValueChange = viewModel::onEditIsbnChange,
+                                label = { Text("ISBN-13") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.editIsbn10,
+                                onValueChange = viewModel::onEditIsbn10Change,
+                                label = { Text("ISBN-10") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
                         }
 
-                        // Extended identifiers
-                        book.asin?.let { MetadataRow("ASIN", it) }
-                        book.goodreadsId?.let { MetadataRow("Goodreads", it) }
-                        book.openLibraryId?.let { MetadataRow("OpenLibrary", it) }
-                        book.hardcoverId?.let { MetadataRow("Hardcover", it) }
+                        // Language + Format
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.editLanguage,
+                                onValueChange = viewModel::onEditLanguageChange,
+                                label = { Text("Language") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.editFormat,
+                                onValueChange = viewModel::onEditFormatChange,
+                                label = { Text("Format") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
 
-                        // Original title/language
-                        book.originalTitle?.let { MetadataRow("Orig. Title", it) }
-                        book.originalLanguage?.let { MetadataRow("Orig. Lang.", it) }
+                        OutlinedTextField(
+                            value = uiState.editGenre,
+                            onValueChange = viewModel::onEditGenreChange,
+                            label = { Text("Genre") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = uiState.editSubjects,
+                            onValueChange = viewModel::onEditSubjectsChange,
+                            label = { Text("Subjects") },
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 3
+                        )
+
+                        // Original title + language
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.editOriginalTitle,
+                                onValueChange = viewModel::onEditOriginalTitleChange,
+                                label = { Text("Orig. Title") },
+                                modifier = Modifier.weight(2f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.editOriginalLanguage,
+                                onValueChange = viewModel::onEditOriginalLanguageChange,
+                                label = { Text("Orig. Lang.") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
 
                         MetadataRow(
                             "Added",
                             dateFormat.format(Date(book.dateAdded))
                         )
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            ClickableMetadataRow(
+                                label = "Author",
+                                value = book.author,
+                                onClick = {
+                                    navController.navigate(
+                                        Screen.Library.createRoute(filterAuthor = book.author)
+                                    )
+                                }
+                            )
+
+                            if (!book.series.isNullOrBlank()) {
+                                ClickableMetadataRow(
+                                    label = "Series",
+                                    value = buildString {
+                                        append(book.series)
+                                        if (!book.seriesNumber.isNullOrBlank()) {
+                                            append(" #${book.seriesNumber}")
+                                        }
+                                    },
+                                    onClick = {
+                                        navController.navigate(
+                                            Screen.Library.createRoute(filterSeries = book.series)
+                                        )
+                                    }
+                                )
+                            }
+
+                            book.publisher?.let { MetadataRow("Publisher", it) }
+                            book.publishedDate?.let { MetadataRow("Published", it) }
+                            book.pageCount?.let { MetadataRow("Pages", it.toString()) }
+                            book.edition?.let { MetadataRow("Edition", it) }
+
+                            if (!book.isbn.isNullOrBlank()) {
+                                MetadataRow("ISBN-13", book.isbn)
+                            }
+                            if (!book.isbn10.isNullOrBlank()) {
+                                MetadataRow("ISBN-10", book.isbn10)
+                            }
+
+                            book.language?.let { MetadataRow("Language", it) }
+                            book.format?.let { MetadataRow("Format", it) }
+                            book.genre?.let { MetadataRow("Genre", it) }
+
+                            if (!book.subjects.isNullOrBlank()) {
+                                MetadataRow("Subjects", book.subjects)
+                            }
+
+                            // Extended identifiers
+                            book.asin?.let { MetadataRow("ASIN", it) }
+                            book.goodreadsId?.let { MetadataRow("Goodreads", it) }
+                            book.openLibraryId?.let { MetadataRow("OpenLibrary", it) }
+                            book.hardcoverId?.let { MetadataRow("Hardcover", it) }
+
+                            // Original title/language
+                            book.originalTitle?.let { MetadataRow("Orig. Title", it) }
+                            book.originalLanguage?.let { MetadataRow("Orig. Lang.", it) }
+
+                            MetadataRow(
+                                "Added",
+                                dateFormat.format(Date(book.dateAdded))
+                            )
+                        }
                     }
                 }
 

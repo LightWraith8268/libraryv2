@@ -25,6 +25,21 @@ data class BookDetailUiState(
     val refreshMessage: String? = null,
     val editTitle: String = "",
     val editAuthor: String = "",
+    val editDescription: String = "",
+    val editPageCount: String = "",
+    val editPublisher: String = "",
+    val editPublishedDate: String = "",
+    val editSeries: String = "",
+    val editSeriesNumber: String = "",
+    val editLanguage: String = "",
+    val editFormat: String = "",
+    val editGenre: String = "",
+    val editSubjects: String = "",
+    val editEdition: String = "",
+    val editIsbn: String = "",
+    val editIsbn10: String = "",
+    val editOriginalTitle: String = "",
+    val editOriginalLanguage: String = "",
     val editNotes: String = "",
     val editTags: String = "",
     // Cover picker
@@ -46,13 +61,29 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             bookRepository.getBookWithCollections(bookId).collect { bookWithCollections ->
                 if (bookWithCollections != null) {
+                    val b = bookWithCollections.book
                     _uiState.value = _uiState.value.copy(
-                        book = bookWithCollections.book,
+                        book = b,
                         collections = bookWithCollections.collections,
-                        editTitle = bookWithCollections.book.title,
-                        editAuthor = bookWithCollections.book.author,
-                        editNotes = bookWithCollections.book.notes ?: "",
-                        editTags = bookWithCollections.book.tags ?: ""
+                        editTitle = b.title,
+                        editAuthor = b.author,
+                        editDescription = b.description ?: "",
+                        editPageCount = b.pageCount?.toString() ?: "",
+                        editPublisher = b.publisher ?: "",
+                        editPublishedDate = b.publishedDate ?: "",
+                        editSeries = b.series ?: "",
+                        editSeriesNumber = b.seriesNumber ?: "",
+                        editLanguage = b.language ?: "",
+                        editFormat = b.format ?: "",
+                        editGenre = b.genre ?: "",
+                        editSubjects = b.subjects ?: "",
+                        editEdition = b.edition ?: "",
+                        editIsbn = b.isbn ?: "",
+                        editIsbn10 = b.isbn10 ?: "",
+                        editOriginalTitle = b.originalTitle ?: "",
+                        editOriginalLanguage = b.originalLanguage ?: "",
+                        editNotes = b.notes ?: "",
+                        editTags = b.tags ?: ""
                     )
                 }
             }
@@ -101,40 +132,76 @@ class BookDetailViewModel @Inject constructor(
 
     fun toggleEditing() {
         val current = _uiState.value
+        val b = current.book
         _uiState.value = current.copy(
             isEditing = !current.isEditing,
-            editTitle = current.book?.title ?: "",
-            editAuthor = current.book?.author ?: "",
-            editNotes = current.book?.notes ?: "",
-            editTags = current.book?.tags ?: ""
+            editTitle = b?.title ?: "",
+            editAuthor = b?.author ?: "",
+            editDescription = b?.description ?: "",
+            editPageCount = b?.pageCount?.toString() ?: "",
+            editPublisher = b?.publisher ?: "",
+            editPublishedDate = b?.publishedDate ?: "",
+            editSeries = b?.series ?: "",
+            editSeriesNumber = b?.seriesNumber ?: "",
+            editLanguage = b?.language ?: "",
+            editFormat = b?.format ?: "",
+            editGenre = b?.genre ?: "",
+            editSubjects = b?.subjects ?: "",
+            editEdition = b?.edition ?: "",
+            editIsbn = b?.isbn ?: "",
+            editIsbn10 = b?.isbn10 ?: "",
+            editOriginalTitle = b?.originalTitle ?: "",
+            editOriginalLanguage = b?.originalLanguage ?: "",
+            editNotes = b?.notes ?: "",
+            editTags = b?.tags ?: ""
         )
     }
 
-    fun onEditTitleChange(value: String) {
-        _uiState.value = _uiState.value.copy(editTitle = value)
-    }
-
-    fun onEditAuthorChange(value: String) {
-        _uiState.value = _uiState.value.copy(editAuthor = value)
-    }
-
-    fun onEditNotesChange(value: String) {
-        _uiState.value = _uiState.value.copy(editNotes = value)
-    }
-
-    fun onEditTagsChange(value: String) {
-        _uiState.value = _uiState.value.copy(editTags = value)
-    }
+    fun onEditTitleChange(value: String) { _uiState.value = _uiState.value.copy(editTitle = value) }
+    fun onEditAuthorChange(value: String) { _uiState.value = _uiState.value.copy(editAuthor = value) }
+    fun onEditDescriptionChange(value: String) { _uiState.value = _uiState.value.copy(editDescription = value) }
+    fun onEditPageCountChange(value: String) { _uiState.value = _uiState.value.copy(editPageCount = value) }
+    fun onEditPublisherChange(value: String) { _uiState.value = _uiState.value.copy(editPublisher = value) }
+    fun onEditPublishedDateChange(value: String) { _uiState.value = _uiState.value.copy(editPublishedDate = value) }
+    fun onEditSeriesChange(value: String) { _uiState.value = _uiState.value.copy(editSeries = value) }
+    fun onEditSeriesNumberChange(value: String) { _uiState.value = _uiState.value.copy(editSeriesNumber = value) }
+    fun onEditLanguageChange(value: String) { _uiState.value = _uiState.value.copy(editLanguage = value) }
+    fun onEditFormatChange(value: String) { _uiState.value = _uiState.value.copy(editFormat = value) }
+    fun onEditGenreChange(value: String) { _uiState.value = _uiState.value.copy(editGenre = value) }
+    fun onEditSubjectsChange(value: String) { _uiState.value = _uiState.value.copy(editSubjects = value) }
+    fun onEditEditionChange(value: String) { _uiState.value = _uiState.value.copy(editEdition = value) }
+    fun onEditIsbnChange(value: String) { _uiState.value = _uiState.value.copy(editIsbn = value) }
+    fun onEditIsbn10Change(value: String) { _uiState.value = _uiState.value.copy(editIsbn10 = value) }
+    fun onEditOriginalTitleChange(value: String) { _uiState.value = _uiState.value.copy(editOriginalTitle = value) }
+    fun onEditOriginalLanguageChange(value: String) { _uiState.value = _uiState.value.copy(editOriginalLanguage = value) }
+    fun onEditNotesChange(value: String) { _uiState.value = _uiState.value.copy(editNotes = value) }
+    fun onEditTagsChange(value: String) { _uiState.value = _uiState.value.copy(editTags = value) }
 
     fun saveEdits() {
         val book = _uiState.value.book ?: return
+        val s = _uiState.value
         viewModelScope.launch {
             bookRepository.updateBook(
                 book.copy(
-                    title = _uiState.value.editTitle.trim(),
-                    author = _uiState.value.editAuthor.trim(),
-                    notes = _uiState.value.editNotes.trim().ifBlank { null },
-                    tags = _uiState.value.editTags.trim().ifBlank { null }
+                    title = s.editTitle.trim(),
+                    author = s.editAuthor.trim(),
+                    description = s.editDescription.trim().ifBlank { null },
+                    pageCount = s.editPageCount.trim().toIntOrNull(),
+                    publisher = s.editPublisher.trim().ifBlank { null },
+                    publishedDate = s.editPublishedDate.trim().ifBlank { null },
+                    series = s.editSeries.trim().ifBlank { null },
+                    seriesNumber = s.editSeriesNumber.trim().ifBlank { null },
+                    language = s.editLanguage.trim().ifBlank { null },
+                    format = s.editFormat.trim().ifBlank { null },
+                    genre = s.editGenre.trim().ifBlank { null },
+                    subjects = s.editSubjects.trim().ifBlank { null },
+                    edition = s.editEdition.trim().ifBlank { null },
+                    isbn = s.editIsbn.trim().ifBlank { null },
+                    isbn10 = s.editIsbn10.trim().ifBlank { null },
+                    originalTitle = s.editOriginalTitle.trim().ifBlank { null },
+                    originalLanguage = s.editOriginalLanguage.trim().ifBlank { null },
+                    notes = s.editNotes.trim().ifBlank { null },
+                    tags = s.editTags.trim().ifBlank { null }
                 )
             )
             _uiState.value = _uiState.value.copy(isEditing = false)
