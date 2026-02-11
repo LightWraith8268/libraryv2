@@ -656,17 +656,44 @@ fun SettingsScreen(
         if (update.isNewer) {
             AlertDialog(
                 onDismissRequest = viewModel::dismissUpdate,
-                title = { Text("Update Available") },
+                title = { Text("Update Available - v${update.versionName}") },
                 text = {
-                    Column {
-                        Text("Version ${update.versionName} is available (you have ${BuildConfig.VERSION_NAME}).")
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            "You have v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         if (update.releaseNotes.isNotBlank()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = update.releaseNotes.take(500),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            for (line in update.releaseNotes.lines()) {
+                                val trimmed = line.trim()
+                                when {
+                                    trimmed.startsWith("### ") -> {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = trimmed.removePrefix("### "),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                    }
+                                    trimmed.startsWith("- ") -> {
+                                        Text(
+                                            text = trimmed,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    trimmed.isNotBlank() -> {
+                                        Text(
+                                            text = trimmed,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 },

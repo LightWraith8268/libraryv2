@@ -28,12 +28,65 @@ data class UpdateInfo(
     val isNewer: Boolean
 )
 
+data class WhatsNewInfo(
+    val versionName: String,
+    val releaseNotes: String
+)
+
 @Singleton
 class AppUpdateManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val client = OkHttpClient()
     private val repo = BuildConfig.GITHUB_REPO
+    private val prefs by lazy {
+        context.getSharedPreferences("app_update", Context.MODE_PRIVATE)
+    }
+
+    private val lastSeenVersion: String?
+        get() = prefs.getString("last_seen_version", null)
+
+    fun shouldShowWhatsNew(): Boolean {
+        val current = BuildConfig.VERSION_NAME
+        val lastSeen = lastSeenVersion
+        return lastSeen != null && lastSeen != current
+    }
+
+    fun isFirstLaunch(): Boolean = lastSeenVersion == null
+
+    fun markVersionSeen() {
+        prefs.edit().putString("last_seen_version", BuildConfig.VERSION_NAME).apply()
+    }
+
+    suspend fun getWhatsNew(): WhatsNewInfo? = withContext(Dispatchers.IO) {
+        try {
+            val currentVersion = BuildConfig.VERSION_NAME
+            val request = Request.Builder()
+                .url("https://api.github.com/repos/$repo/releases/tags/v$currentVersion")
+                .header("Accept", "application/vnd.github.v3+json")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                DebugLog.d("AppUpdate", "No release found for v$currentVersion: ${response.code}")
+                return@withContext null
+            }
+
+            val body = response.body?.string() ?: return@withContext null
+            val release = org.json.JSONObject(body)
+            val notes = release.optString("body", "")
+
+            if (notes.isBlank()) return@withContext null
+
+            WhatsNewInfo(
+                versionName = currentVersion,
+                releaseNotes = notes
+            )
+        } catch (e: Exception) {
+            DebugLog.e("AppUpdate", "What's new fetch failed: ${e.message}")
+            null
+        }
+    }
 
     suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {

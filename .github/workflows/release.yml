@@ -120,6 +120,18 @@ jobs:
             app/build/outputs/bundle/release/LibraryIQ-*.aab
           retention-days: 30
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION_NAME="${{ steps.version.outputs.version_name }}"
+          # Extract the section between this version's header and the next version header
+          NOTES=$(awk "/^## \\[${VERSION_NAME}\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="Release ${VERSION_NAME}"
+          fi
+          # Write to file for gh release --notes-file
+          echo "$NOTES" > /tmp/release_notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -138,7 +150,7 @@ jobs:
 
           gh release create "$VERSION" \
             --title "LibraryIQ $VERSION (build $BUILD)" \
-            --generate-notes \
+            --notes-file /tmp/release_notes.md \
             $FILES
 
       - name: Commit version bump
