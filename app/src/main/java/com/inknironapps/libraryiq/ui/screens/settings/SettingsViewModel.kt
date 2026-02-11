@@ -274,7 +274,7 @@ class SettingsViewModel @Inject constructor(
                             title = if (fresh.title != "Unknown Title") fresh.title else book.title,
                             author = if (fresh.author != "Unknown Author") fresh.author else book.author,
                             description = fresh.description ?: book.description,
-                            coverUrl = fresh.coverUrl ?: book.coverUrl,
+                            coverUrl = if (book.coverManuallySet) book.coverUrl else (fresh.coverUrl ?: book.coverUrl),
                             pageCount = fresh.pageCount ?: book.pageCount,
                             publisher = fresh.publisher ?: book.publisher,
                             publishedDate = fresh.publishedDate ?: book.publishedDate,

@@ -182,6 +182,29 @@ class BookRepository @Inject constructor(
             mergeBooks(acc, book)
         }
 
+        // Consensus-based author selection: when multiple sources return different
+        // authors, pick the one most sources agree on (weighted by quality score).
+        // This prevents a single bad source (e.g., wrong Amazon result) from overriding
+        // correct data from Google Books, Open Library, and Hardcover.
+        val authorVotes = isbnSources
+            .map { it.author }
+            .filter { it != "Unknown Author" }
+        if (authorVotes.size >= 2) {
+            val grouped = authorVotes.groupBy { it.lowercase().trim() }
+            val best = grouped.entries
+                .sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.value.size }
+                    .thenByDescending { scoreAuthor(it.value.first()) })
+                .firstOrNull()
+            if (best != null) {
+                val consensusAuthor = best.value.first() // Use original casing
+                if (consensusAuthor != merged.author) {
+                    DebugLog.d(TAG, "Author consensus: '${merged.author}' -> '$consensusAuthor' " +
+                        "(${best.value.size}/${authorVotes.size} sources agree)")
+                    merged = merged.copy(author = consensusAuthor)
+                }
+            }
+        }
+
         // 7. Title-based enrichment: always search by title+author for additional metadata
         DebugLog.d(TAG, "Enriching by title: '${merged.title}' by '${merged.author}'")
         val titleSources = searchByTitle(merged.title, merged.author, isbn)
@@ -222,6 +245,37 @@ class BookRepository @Inject constructor(
                 if (matchedSeries != null) {
                     DebugLog.d(TAG, "Series from title prefix '$titlePrefix': '$matchedSeries'")
                     merged = merged.copy(series = matchedSeries)
+                }
+
+                // If no existing series matched, check if OTHER books in the library
+                // share the same title prefix. This catches series like "Fallen Academy"
+                // where "Fallen Academy: Year One" + "Fallen Academy: Year Two" both exist.
+                if (merged.series == null) {
+                    val booksWithSamePrefix = bookDao.getBooksWithTitlePrefix("$titlePrefix:%")
+                    if (booksWithSamePrefix.isNotEmpty()) {
+                        DebugLog.d(TAG, "Series from shared prefix: '$titlePrefix' (${booksWithSamePrefix.size} other book(s))")
+                        merged = merged.copy(series = titlePrefix)
+                        // Also retroactively tag the other books with this series
+                        for (sibling in booksWithSamePrefix) {
+                            if (sibling.series == null) {
+                                bookDao.updateSeries(sibling.id, titlePrefix)
+                                DebugLog.d(TAG, "Retroactively tagged '${sibling.title}' with series '$titlePrefix'")
+                            }
+                        }
+                    }
+                }
+
+                // If still no series, try Hardcover API to see if the prefix is a known series
+                if (merged.series == null && BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
+                    val seriesFromApi = tryHardcoverSeriesSearch(titlePrefix)
+                    if (seriesFromApi != null) {
+                        DebugLog.d(TAG, "Series from Hardcover prefix search: '${seriesFromApi.first}' #${seriesFromApi.second}")
+                        merged = merged.copy(
+                            series = seriesFromApi.first,
+                            seriesNumber = merged.seriesNumber ?: seriesFromApi.second
+                        )
+                        diag.add("HC-series: ${seriesFromApi.first}")
+                    }
                 }
             }
         }
@@ -636,6 +690,34 @@ class BookRepository @Inject constructor(
         }
     }
 
+    /**
+     * Searches Hardcover API by a title prefix to find series info.
+     * Used when the title has a "Series Name: Subtitle" pattern but no API
+     * returned series data. Queries Hardcover with just the prefix to see
+     * if it's a known series.
+     */
+    private suspend fun tryHardcoverSeriesSearch(titlePrefix: String): Pair<String, String?>? {
+        return try {
+            val response = hardcoverApiService.query(
+                HardcoverApiService.buildTitleQuery(titlePrefix)
+            )
+            // Check if any result has series info
+            for (edition in response.data?.editions.orEmpty()) {
+                val seriesInfo = edition.book?.bookSeries?.firstOrNull()
+                if (seriesInfo?.series?.name != null) {
+                    val seriesNumber = seriesInfo.position?.let {
+                        if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
+                    }
+                    return Pair(seriesInfo.series.name, seriesNumber)
+                }
+            }
+            null
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Hardcover series search error: ${e.message}")
+            null
+        }
+    }
+
     companion object {
         private const val TAG = "BookRepository"
     }
@@ -865,14 +947,53 @@ class BookRepository @Inject constructor(
         return if (b.length > a.length) b else a
     }
 
-    /** Prefer non-"Unknown Author", then longer (more complete author list). */
+    /**
+     * Prefer non-"Unknown Author", then score by quality, then length as tiebreaker.
+     * Prevents garbage like "To Be To Be Confirmed Atria" from winning over "Hannah Grace".
+     */
     private fun pickBestAuthor(a: String, b: String): String {
         val aReal = a != "Unknown Author"
         val bReal = b != "Unknown Author"
         if (aReal && !bReal) return a
         if (!aReal && bReal) return b
         if (!aReal && !bReal) return a
+        val scoreA = scoreAuthor(a)
+        val scoreB = scoreAuthor(b)
+        if (scoreA > scoreB) return a
+        if (scoreB > scoreA) return b
+        // Tied score - prefer longer (more complete author list)
         return if (b.length > a.length) b else a
+    }
+
+    /**
+     * Scores an author name by quality. Higher = more likely a real author name.
+     * Penalizes publisher names, placeholders, and suspiciously long/short strings.
+     */
+    private fun scoreAuthor(name: String): Int {
+        if (name == "Unknown Author") return 0
+        var score = 10
+        val lower = name.lowercase().trim()
+        // Placeholder text (Amazon pre-release)
+        if (lower.contains("to be confirmed") || lower.contains("to be announced") ||
+            lower.contains("tbd") || lower.contains("tba") || lower.contains("forthcoming")) {
+            score -= 8
+        }
+        // Publisher names leaking into author field
+        val publishers = listOf(
+            "atria", "penguin", "harpercollins", "simon & schuster", "random house",
+            "hachette", "macmillan", "scholastic", "bloomsbury", "vintage", "knopf",
+            "doubleday", "bantam", "berkley", "putnam", "dutton", "avon", "mira",
+            "harlequin", "tor", "orbit", "gallery", "pocket books", "scribner",
+            "grand central", "st. martin", "william morrow", "piatkus"
+        )
+        if (publishers.any { lower.contains(it) }) score -= 6
+        // Suspiciously long (likely concatenated garbage)
+        if (name.length > 40) score -= 3
+        // Typical author names have 2-3 words
+        val words = name.trim().split(Regex("""\s+"""))
+        if (words.size in 2..3) score += 2
+        if (words.size > 5) score -= 2
+        return score
     }
 
     /** Pick the longer non-null string (more detail = better). */
