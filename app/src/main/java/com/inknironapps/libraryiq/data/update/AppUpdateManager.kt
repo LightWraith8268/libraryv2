@@ -36,11 +36,15 @@ class AppUpdateManager @Inject constructor(
     /** Short-timeout client for GitHub API calls. */
     private val apiClient = OkHttpClient()
 
-    /** Long-timeout client for downloading large APK files. */
+    /**
+     * Long-timeout client for downloading large APK files.
+     * Handles redirects manually to strip Authorization headers when
+     * redirecting cross-domain (e.g. GitHub API → S3/CDN signed URL).
+     */
     private val downloadClient = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
         .build()
 
     private val repo = BuildConfig.GITHUB_REPO
@@ -151,12 +155,16 @@ class AppUpdateManager @Inject constructor(
                 val asset = assets.getJSONObject(i)
                 val name = asset.getString("name")
                 if (name.endsWith(".apk")) {
+                    // Use API URL ("url" field) instead of "browser_download_url".
+                    // The API URL works reliably with token auth for private repos,
+                    // whereas browser_download_url requires session/cookie auth.
+                    val assetUrl = asset.getString("url")
                     if (name.contains(buildType)) {
-                        downloadUrl = asset.getString("browser_download_url")
+                        downloadUrl = assetUrl
                         break
                     }
                     if (fallbackUrl == null) {
-                        fallbackUrl = asset.getString("browser_download_url")
+                        fallbackUrl = assetUrl
                     }
                 }
             }
@@ -198,15 +206,33 @@ class AppUpdateManager @Inject constructor(
         val file = File(downloadsDir, fileName)
 
         try {
-            // Build download request — use Accept: application/octet-stream for binary,
-            // NOT the GitHub API media type (which would return JSON metadata).
+            // Build download request using the GitHub API asset URL with
+            // Accept: application/octet-stream to get the binary (not JSON metadata).
             val requestBuilder = Request.Builder()
                 .url(updateInfo.downloadUrl)
                 .header("Accept", "application/octet-stream")
             if (token.isNotBlank()) {
                 requestBuilder.header("Authorization", "token $token")
             }
-            val response = downloadClient.newCall(requestBuilder.build()).execute()
+            var response = downloadClient.newCall(requestBuilder.build()).execute()
+
+            // GitHub API returns 302 redirect to a signed temporary URL.
+            // Follow it WITHOUT auth headers — the CDN rejects foreign Authorization.
+            var redirects = 0
+            while (response.isRedirect && redirects < 5) {
+                val location = response.header("Location")
+                response.close()
+                if (location == null) {
+                    DebugLog.e("AppUpdate", "Redirect with no Location header")
+                    return@withContext false
+                }
+                DebugLog.d("AppUpdate", "Following redirect #${redirects + 1} to ${location.take(80)}...")
+                response = downloadClient.newCall(
+                    Request.Builder().url(location).build()
+                ).execute()
+                redirects++
+            }
+
             if (!response.isSuccessful) {
                 DebugLog.e("AppUpdate", "Download failed: HTTP ${response.code} from ${updateInfo.downloadUrl}")
                 return@withContext false
