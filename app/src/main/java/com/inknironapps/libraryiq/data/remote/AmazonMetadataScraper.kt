@@ -1087,9 +1087,19 @@ class AmazonMetadataScraper @Inject constructor() {
             val numInBullet = """\((?:Book|Vol\.?|#)\s*(\d+)\)""".toRegex(RegexOption.IGNORE_CASE)
                 .find(seriesBullet)?.groupValues?.get(1)
             val name = seriesBullet.replace("""\s*\([^)]*\)""".toRegex(), "").trim()
-            if (name.isNotBlank()) {
+            val formatKeywords = listOf(
+                "audible", "audio", "kindle", "ebook", "e-book", "paperback",
+                "hardcover", "hardback", "edition", "mass market", "board book",
+                "library binding", "spiral", "cd", "mp3", "digital"
+            )
+            val nameLower = name.lowercase()
+            val isFormat = formatKeywords.any { nameLower.contains(it) }
+            if (name.isNotBlank() && !isFormat) {
                 DebugLog.d(TAG, "Series from bullet: '$name' #$numInBullet")
                 return Pair(name, numInBullet)
+            }
+            if (isFormat) {
+                DebugLog.d(TAG, "Series bullet '$name' rejected as format/edition info")
             }
         }
 
