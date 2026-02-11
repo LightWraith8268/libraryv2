@@ -28,12 +28,65 @@ data class UpdateInfo(
     val isNewer: Boolean
 )
 
+data class WhatsNewInfo(
+    val versionName: String,
+    val releaseNotes: String
+)
+
 @Singleton
 class AppUpdateManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val client = OkHttpClient()
     private val repo = BuildConfig.GITHUB_REPO
+    private val prefs by lazy {
+        context.getSharedPreferences("app_update", Context.MODE_PRIVATE)
+    }
+
+    private val lastSeenVersion: String?
+        get() = prefs.getString("last_seen_version", null)
+
+    fun shouldShowWhatsNew(): Boolean {
+        val current = BuildConfig.VERSION_NAME
+        val lastSeen = lastSeenVersion
+        return lastSeen != null && lastSeen != current
+    }
+
+    fun isFirstLaunch(): Boolean = lastSeenVersion == null
+
+    fun markVersionSeen() {
+        prefs.edit().putString("last_seen_version", BuildConfig.VERSION_NAME).apply()
+    }
+
+    suspend fun getWhatsNew(): WhatsNewInfo? = withContext(Dispatchers.IO) {
+        try {
+            val currentVersion = BuildConfig.VERSION_NAME
+            val request = Request.Builder()
+                .url("https://api.github.com/repos/$repo/releases/tags/v$currentVersion")
+                .header("Accept", "application/vnd.github.v3+json")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                DebugLog.d("AppUpdate", "No release found for v$currentVersion: ${response.code}")
+                return@withContext null
+            }
+
+            val body = response.body?.string() ?: return@withContext null
+            val release = org.json.JSONObject(body)
+            val notes = release.optString("body", "")
+
+            if (notes.isBlank()) return@withContext null
+
+            WhatsNewInfo(
+                versionName = currentVersion,
+                releaseNotes = sanitizeNotes(notes)
+            )
+        } catch (e: Exception) {
+            DebugLog.e("AppUpdate", "What's new fetch failed: ${e.message}")
+            null
+        }
+    }
 
     suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
@@ -84,7 +137,7 @@ class AppUpdateManager @Inject constructor(
                 tagName = tagName,
                 versionName = remoteVersion,
                 downloadUrl = downloadUrl,
-                releaseNotes = releaseNotes,
+                releaseNotes = sanitizeNotes(releaseNotes),
                 isNewer = isNewer
             )
         } catch (e: Exception) {
@@ -144,6 +197,17 @@ class AppUpdateManager @Inject constructor(
         } catch (e: Exception) {
             DebugLog.e("AppUpdate", "Install failed: ${e.message}")
         }
+    }
+
+    /** Strips Claude session URLs, PR links, usernames, and other noise from release notes. */
+    private fun sanitizeNotes(raw: String): String {
+        return raw
+            .replace(Regex("""https://claude\.ai/\S*"""), "")
+            .replace(Regex("""\s*by @[\w-]+ in https://github\.com/\S*"""), "")
+            .replace(Regex("""\*?\*?\s*Full Changelog\s*:?\s*https://github\.com/\S*\*?\*?"""), "")
+            .replace(Regex("""Co-authored-by:.*"""), "")
+            .replace(Regex("""\n{3,}"""), "\n\n")
+            .trim()
     }
 
     private fun isNewerVersion(remote: String, current: String): Boolean {

@@ -335,13 +335,31 @@ fun SettingsScreen(
                         }
                     }
 
-                    OutlinedButton(
-                        onClick = viewModel::leaveLibrary,
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.CloudOff, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Leave Library")
+                        OutlinedButton(
+                            onClick = viewModel::forceSync,
+                            modifier = Modifier.weight(1f),
+                            enabled = !uiState.isLoading
+                        ) {
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            } else {
+                                Icon(Icons.Default.Sync, contentDescription = null)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Force Sync")
+                        }
+                        OutlinedButton(
+                            onClick = viewModel::leaveLibrary,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.CloudOff, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Leave Library")
+                        }
                     }
                 } else {
                     // No library yet - create or join
@@ -656,17 +674,44 @@ fun SettingsScreen(
         if (update.isNewer) {
             AlertDialog(
                 onDismissRequest = viewModel::dismissUpdate,
-                title = { Text("Update Available") },
+                title = { Text("Update Available - v${update.versionName}") },
                 text = {
-                    Column {
-                        Text("Version ${update.versionName} is available (you have ${BuildConfig.VERSION_NAME}).")
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            "You have v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         if (update.releaseNotes.isNotBlank()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = update.releaseNotes.take(500),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            for (line in update.releaseNotes.lines()) {
+                                val trimmed = line.trim()
+                                when {
+                                    trimmed.startsWith("### ") -> {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = trimmed.removePrefix("### "),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                    }
+                                    trimmed.startsWith("- ") -> {
+                                        Text(
+                                            text = trimmed,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    trimmed.isNotBlank() -> {
+                                        Text(
+                                            text = trimmed,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 },

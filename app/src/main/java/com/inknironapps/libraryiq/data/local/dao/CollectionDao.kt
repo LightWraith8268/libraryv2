@@ -38,6 +38,9 @@ interface CollectionDao {
     @Delete
     suspend fun deleteCollection(collection: Collection)
 
+    @Query("DELETE FROM collections WHERE id = :collectionId")
+    suspend fun deleteCollectionById(collectionId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addBookToCollection(crossRef: BookCollectionCrossRef)
 

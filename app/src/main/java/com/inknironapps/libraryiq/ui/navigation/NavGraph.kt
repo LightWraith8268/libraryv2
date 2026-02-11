@@ -1,22 +1,36 @@
 package com.inknironapps.libraryiq.ui.navigation
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -26,6 +40,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.inknironapps.libraryiq.data.update.WhatsNewInfo
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.inknironapps.libraryiq.ui.screens.addbook.AddBookScreen
 import com.inknironapps.libraryiq.ui.screens.auth.AuthScreen
 import com.inknironapps.libraryiq.ui.screens.bookdetail.BookDetailScreen
@@ -82,6 +99,13 @@ fun AppNavigation() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+
+    // What's New dialog
+    val whatsNewViewModel: WhatsNewViewModel = hiltViewModel()
+    val whatsNew by whatsNewViewModel.whatsNew.collectAsStateWithLifecycle()
+    whatsNew?.let { info ->
+        WhatsNewDialog(info = info, onDismiss = whatsNewViewModel::dismissWhatsNew)
+    }
 
     val showBottomBar = currentDestination?.route in listOf(
         Screen.Library.route,
@@ -203,4 +227,57 @@ fun AppNavigation() {
             }
         }
     }
+}
+
+@Composable
+private fun WhatsNewDialog(info: WhatsNewInfo, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "What's New in v${info.versionName}",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                // Parse markdown-style release notes into readable text
+                val lines = info.releaseNotes.lines()
+                for (line in lines) {
+                    val trimmed = line.trim()
+                    when {
+                        trimmed.startsWith("### ") -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = trimmed.removePrefix("### "),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        trimmed.startsWith("- ") -> {
+                            Text(
+                                text = trimmed,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        trimmed.isNotBlank() -> {
+                            Text(
+                                text = trimmed,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Got it")
+            }
+        }
+    )
 }

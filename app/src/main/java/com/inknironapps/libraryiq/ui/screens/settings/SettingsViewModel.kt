@@ -219,6 +219,25 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(message = "Checking for existing purchases...") }
     }
 
+    fun forceSync() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, message = "Syncing...") }
+            val result = firestoreSync.forceSync()
+            result.fold(
+                onSuccess = { changes ->
+                    _uiState.update {
+                        it.copy(isLoading = false, message = "Sync complete ($changes changes)")
+                    }
+                },
+                onFailure = { e ->
+                    _uiState.update {
+                        it.copy(isLoading = false, error = "Sync failed: ${e.message}")
+                    }
+                }
+            )
+        }
+    }
+
     fun showClearDataDialog() = _uiState.update { it.copy(showClearDataDialog = true) }
     fun hideClearDataDialog() = _uiState.update { it.copy(showClearDataDialog = false) }
 

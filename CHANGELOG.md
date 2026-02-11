@@ -4,6 +4,37 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.3] - 2026-02-11
+
+### Added
+- In-app update checker — download and install updates directly from GitHub releases
+- "What's New" dialog on first launch after updating
+- Stats dashboard with reading insights (books by status, top authors/genres, yearly activity)
+- "Want to Buy" reading status with automatic collection management
+- Continuous barcode scan mode (toggle in Settings > Scanner)
+- CSV library export (Settings > Data Management)
+- Offline sync indicator in Settings
+- Force sync button to fully reconcile local library with cloud
+- Apple Books as default cover source for all book lookups
+- Series name standardization to prevent duplicate series entries from different metadata sources
+- GitHub Actions release workflow with versioned APKs and auto version bump
+
+### Changed
+- Pro subscription now only required for multi-device sync; creating and joining libraries is free for all users
+- Default "To Buy" collection renamed to "Want to Buy"
+- Series view auto-sorts by series number
+- Cover image priority: Apple Books > Amazon > Hardcover > Open Library > Google Books
+- Author names sorted by last name in library view
+- Refresh metadata now updates existing fields with fresh data instead of only filling blanks
+- Build workflow consolidated into release workflow
+
+### Fixed
+- Book deletions now sync correctly to other library members via Firestore document change detection
+- Google Books API returning no results due to Firebase API key not authorized for Books API
+- Google Books title search query encoding — operators were broken by URL-encoding of + character
+- Subscription upsell no longer shown to users who joined a library (they sync free)
+- Library code text updates based on Pro status
+
 ## [1.3.0] - 2026-02-09
 
 ### Added

@@ -168,7 +168,7 @@ class BookRepository @Inject constructor(
 
         // Collect all ISBN-based results and merge.
         // Order matters: first source's non-null fields win.
-        // Amazon/Hardcover have the best covers, so put them first.
+        // Amazon/Hardcover first for metadata; Apple Books cover applied after merge.
         val isbnSources = listOfNotNull(
             amazonBook, hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
         )
@@ -183,20 +183,32 @@ class BookRepository @Inject constructor(
             mergeBooks(acc, book)
         }
 
-        // 7. Title-based enrichment: if metadata is incomplete, search by title+author
-        if (needsEnrichment(merged)) {
-            DebugLog.d(TAG, "Metadata incomplete, enriching by title: '${merged.title}' by '${merged.author}'")
-            val titleSources = searchByTitle(merged.title, merged.author, isbn)
-            for (enrichment in titleSources) {
-                merged = mergeBooks(merged, enrichment)
-            }
-            if (titleSources.isNotEmpty()) {
-                diag.add("title-enrich: ${titleSources.size} hit(s)")
-            }
+        // 7. Title-based enrichment: always search by title+author for additional metadata
+        DebugLog.d(TAG, "Enriching by title: '${merged.title}' by '${merged.author}'")
+        val titleSources = searchByTitle(merged.title, merged.author, isbn)
+        for (enrichment in titleSources) {
+            merged = mergeBooks(merged, enrichment)
+        }
+        if (titleSources.isNotEmpty()) {
+            diag.add("title-enrich: ${titleSources.size} hit(s)")
         }
 
         // Clean up the final title - strip edition/format suffixes and series parentheticals
         merged = merged.copy(title = cleanTitle(merged.title, merged.series))
+
+        // Standardize series name to match existing books in the library
+        if (merged.series != null) {
+            merged = merged.copy(series = standardizeSeriesName(merged.series!!))
+        }
+
+        // 8. Apple Books cover (preferred source - high quality artwork)
+        val appleCover = tryAppleBooksCover(merged.title, merged.author)
+        if (appleCover != null) {
+            merged = merged.copy(coverUrl = appleCover)
+            diag.add("Apple: cover")
+        } else {
+            diag.add("Apple: miss")
+        }
 
         val diagStr = diag.joinToString(" | ")
         DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
@@ -247,12 +259,12 @@ class BookRepository @Inject constructor(
             baseTitle
         }
 
-        // Google Books title search (use full title first for edition match)
+        // Google Books title search (quote multi-word values for exact matching)
         try {
             val query = if (author != "Unknown Author") {
-                "intitle:$baseTitle+inauthor:$author"
+                "intitle:\"$baseTitle\" inauthor:\"$author\""
             } else {
-                "intitle:$baseTitle"
+                "intitle:\"$baseTitle\""
             }
             val response = bookApiService.searchByIsbn(query)
             val bestMatch = response.items?.firstOrNull()
@@ -580,6 +592,24 @@ class BookRepository @Inject constructor(
         return results
     }
 
+    /**
+     * Fetches the best Apple Books cover for a book by title+author.
+     * Returns the first matching high-res (600x600) cover URL, or null.
+     */
+    private suspend fun tryAppleBooksCover(title: String, author: String): String? {
+        return try {
+            val searchTerm = if (author != "Unknown Author") "$title $author" else title
+            val response = iTunesApiService.searchEbooks(searchTerm, limit = 1)
+            response.results?.firstOrNull()?.getHighResCoverUrl().also {
+                DebugLog.d(TAG, "Apple Books cover: ${if (it != null) "found" else "not found"} for '$searchTerm'")
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Apple Books cover error: ${e.message}")
+            lastErrors.add("Apple: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
     companion object {
         private const val TAG = "BookRepository"
     }
@@ -714,6 +744,35 @@ class BookRepository @Inject constructor(
             )
         }
         return cleaned.trim()
+    }
+
+    /**
+     * Normalizes a series name for comparison by stripping common suffixes
+     * like "Series", "Trilogy", "Saga", "Duology", "Quartet", "Cycle".
+     */
+    private fun normalizeSeriesForComparison(name: String): String {
+        return name.trim()
+            .replace(Regex("""\s+(?:Series|Trilogy|Saga|Duology|Quartet|Cycle)\s*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
+    /**
+     * Checks existing series names in the library and matches the incoming
+     * series name to an established one if they normalize to the same value.
+     * E.g. "The Maple Hill" matches "The Maple Hill Series" → uses "The Maple Hill Series".
+     */
+    private suspend fun standardizeSeriesName(incomingSeries: String): String {
+        val normalizedIncoming = normalizeSeriesForComparison(incomingSeries)
+        val existingNames = bookDao.getAllSeriesNames()
+
+        for (existing in existingNames) {
+            val normalizedExisting = normalizeSeriesForComparison(existing)
+            if (normalizedIncoming.equals(normalizedExisting, ignoreCase = true)) {
+                return existing // Use the established name from the library
+            }
+        }
+
+        return incomingSeries // No match — use as-is
     }
 
     private fun mergeBooks(primary: Book, secondary: Book): Book {

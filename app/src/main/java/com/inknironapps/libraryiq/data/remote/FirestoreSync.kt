@@ -10,6 +10,7 @@ import com.inknironapps.libraryiq.data.local.entity.Collection
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
@@ -363,28 +364,33 @@ class FirestoreSync @Inject constructor(
         if (!isSyncEnabled) return
         val userId = getUserId() ?: return
 
-        // Listen for shared book metadata - preserve local per-user fields
+        // Listen for shared book metadata — handle adds, updates, AND deletes
         booksListener = libraryBooksRef().addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
             scope.launch {
-                snapshot.documents.forEach { doc ->
-                    val data = doc.data ?: return@forEach
-                    val sharedBook = mapToSharedBook(doc.id, data) ?: return@forEach
-                    // Merge with existing local book to preserve per-user fields
-                    val existing = bookDao.getBookByIdDirect(doc.id)
-                    // Preserve per-user fields from local (reading status + rating)
-                    val merged = if (existing != null) {
-                        sharedBook.copy(
-                            readingStatus = existing.readingStatus,
-                            rating = existing.rating,
-                            dateStarted = existing.dateStarted,
-                            dateFinished = existing.dateFinished,
-                            currentPage = existing.currentPage
-                        )
-                    } else {
-                        sharedBook
+                for (change in snapshot.documentChanges) {
+                    when (change.type) {
+                        DocumentChange.Type.REMOVED -> {
+                            bookDao.deleteBookById(change.document.id)
+                        }
+                        DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                            val data = change.document.data
+                            val sharedBook = mapToSharedBook(change.document.id, data) ?: continue
+                            val existing = bookDao.getBookByIdDirect(change.document.id)
+                            val merged = if (existing != null) {
+                                sharedBook.copy(
+                                    readingStatus = existing.readingStatus,
+                                    rating = existing.rating,
+                                    dateStarted = existing.dateStarted,
+                                    dateFinished = existing.dateFinished,
+                                    currentPage = existing.currentPage
+                                )
+                            } else {
+                                sharedBook
+                            }
+                            bookDao.insertBook(merged)
+                        }
                     }
-                    bookDao.insertBook(merged)
                 }
             }
         }
@@ -393,10 +399,11 @@ class FirestoreSync @Inject constructor(
         userStatusListener = userStatusBooksRef(userId).addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
             scope.launch {
-                snapshot.documents.forEach { doc ->
-                    val data = doc.data ?: return@forEach
-                    val bookId = doc.id
-                    val existing = bookDao.getBookByIdDirect(bookId) ?: return@forEach
+                for (change in snapshot.documentChanges) {
+                    if (change.type == DocumentChange.Type.REMOVED) continue
+                    val data = change.document.data
+                    val bookId = change.document.id
+                    val existing = bookDao.getBookByIdDirect(bookId) ?: continue
                     val updated = existing.copy(
                         readingStatus = try {
                             ReadingStatus.valueOf(data["readingStatus"] as? String ?: existing.readingStatus.name)
@@ -413,24 +420,130 @@ class FirestoreSync @Inject constructor(
             }
         }
 
+        // Listen for collection changes — handle adds, updates, AND deletes
         collectionsListener = libraryCollectionsRef().addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
-            val collections = snapshot.documents.mapNotNull { doc ->
-                mapToCollection(doc.id, doc.data ?: return@mapNotNull null)
+            scope.launch {
+                for (change in snapshot.documentChanges) {
+                    when (change.type) {
+                        DocumentChange.Type.REMOVED -> {
+                            collectionDao.deleteCollectionById(change.document.id)
+                        }
+                        DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                            val data = change.document.data
+                            val collection = mapToCollection(change.document.id, data) ?: continue
+                            collectionDao.insertCollection(collection)
+                        }
+                    }
+                }
             }
-            scope.launch { collections.forEach { collectionDao.insertCollection(it) } }
         }
 
+        // Listen for book-collection cross-ref changes — handle adds AND deletes
         crossRefsListener = libraryCrossRefsRef().addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
-            val refs = snapshot.documents.mapNotNull { doc ->
-                val data = doc.data ?: return@mapNotNull null
-                BookCollectionCrossRef(
-                    bookId = data["bookId"] as? String ?: return@mapNotNull null,
-                    collectionId = data["collectionId"] as? String ?: return@mapNotNull null
-                )
+            scope.launch {
+                for (change in snapshot.documentChanges) {
+                    val data = change.document.data
+                    val bookId = data["bookId"] as? String ?: continue
+                    val collectionId = data["collectionId"] as? String ?: continue
+                    when (change.type) {
+                        DocumentChange.Type.REMOVED -> {
+                            collectionDao.removeBookFromCollectionById(bookId, collectionId)
+                        }
+                        DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                            collectionDao.addBookToCollection(
+                                BookCollectionCrossRef(bookId = bookId, collectionId = collectionId)
+                            )
+                        }
+                    }
+                }
             }
-            scope.launch { refs.forEach { collectionDao.addBookToCollection(it) } }
+        }
+    }
+
+    /**
+     * Force a full sync: pull all data from Firestore and reconcile with local.
+     * Removes local books/collections that no longer exist remotely.
+     */
+    suspend fun forceSync(): Result<Int> {
+        if (!isSyncEnabled) return Result.failure(Exception("Sync not enabled"))
+        val userId = getUserId() ?: return Result.failure(Exception("Not signed in"))
+
+        return try {
+            var changes = 0
+
+            // Pull all remote books
+            val remoteBooksSnapshot = libraryBooksRef().get().await()
+            val remoteBookIds = mutableSetOf<String>()
+            for (doc in remoteBooksSnapshot.documents) {
+                val data = doc.data ?: continue
+                remoteBookIds.add(doc.id)
+                val sharedBook = mapToSharedBook(doc.id, data) ?: continue
+                val existing = bookDao.getBookByIdDirect(doc.id)
+                val merged = if (existing != null) {
+                    sharedBook.copy(
+                        readingStatus = existing.readingStatus,
+                        rating = existing.rating,
+                        dateStarted = existing.dateStarted,
+                        dateFinished = existing.dateFinished,
+                        currentPage = existing.currentPage
+                    )
+                } else {
+                    changes++
+                    sharedBook
+                }
+                bookDao.insertBook(merged)
+            }
+
+            // Pull per-user status
+            val userStatusSnapshot = userStatusBooksRef(userId).get().await()
+            for (doc in userStatusSnapshot.documents) {
+                val data = doc.data ?: continue
+                val existing = bookDao.getBookByIdDirect(doc.id) ?: continue
+                val updated = existing.copy(
+                    readingStatus = try {
+                        ReadingStatus.valueOf(data["readingStatus"] as? String ?: existing.readingStatus.name)
+                    } catch (_: Exception) { existing.readingStatus },
+                    rating = (data["rating"] as? Number)?.toFloat() ?: existing.rating,
+                    dateStarted = (data["dateStarted"] as? Number)?.toLong() ?: existing.dateStarted,
+                    dateFinished = (data["dateFinished"] as? Number)?.toLong() ?: existing.dateFinished,
+                    currentPage = (data["currentPage"] as? Number)?.toInt() ?: existing.currentPage
+                )
+                bookDao.updateBook(updated)
+            }
+
+            // Delete local books that don't exist remotely
+            val localBooks = bookDao.getAllBooksList()
+            for (book in localBooks) {
+                if (book.id !in remoteBookIds) {
+                    bookDao.deleteBookById(book.id)
+                    changes++
+                }
+            }
+
+            // Pull all remote collections
+            val remoteCollectionsSnapshot = libraryCollectionsRef().get().await()
+            val remoteCollectionIds = mutableSetOf<String>()
+            for (doc in remoteCollectionsSnapshot.documents) {
+                val data = doc.data ?: continue
+                remoteCollectionIds.add(doc.id)
+                val collection = mapToCollection(doc.id, data) ?: continue
+                collectionDao.insertCollection(collection)
+            }
+
+            // Pull all remote cross-refs
+            val remoteCrossRefsSnapshot = libraryCrossRefsRef().get().await()
+            for (doc in remoteCrossRefsSnapshot.documents) {
+                val data = doc.data ?: continue
+                val bookId = data["bookId"] as? String ?: continue
+                val collectionId = data["collectionId"] as? String ?: continue
+                collectionDao.addBookToCollection(BookCollectionCrossRef(bookId, collectionId))
+            }
+
+            Result.success(changes)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
