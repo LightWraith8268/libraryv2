@@ -81,6 +81,12 @@ interface BookDao {
 
     @Query("SELECT DISTINCT series FROM books WHERE series IS NOT NULL AND series != ''")
     suspend fun getAllSeriesNames(): List<String>
+
+    @Query("SELECT * FROM books WHERE title LIKE :titlePattern")
+    suspend fun getBooksWithTitlePrefix(titlePattern: String): List<Book>
+
+    @Query("UPDATE books SET series = :series WHERE id = :bookId")
+    suspend fun updateSeries(bookId: String, series: String)
 }
 
 data class AuthorCount(val author: String, val cnt: Int)

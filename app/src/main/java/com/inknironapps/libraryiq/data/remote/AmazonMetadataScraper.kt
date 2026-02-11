@@ -231,6 +231,14 @@ class AmazonMetadataScraper @Inject constructor() {
             return null
         }
 
+        // Verify the product page ISBN matches what we searched for.
+        // Prevents returning metadata from a wrong book when Amazon search
+        // returns an incorrect result (e.g., Emily McIntire instead of Hannah Grace).
+        if (!verifyIsbnMatch(html, isbn, asin, details)) {
+            DebugLog.d(TAG, "ISBN mismatch - product page is for a different book")
+            return null
+        }
+
         // Most reliable: parse <title> tag
         // Format: "Book Title: Author Last, First: 9781234567890: Amazon.com: Books"
         val titleTagResult = parseHtmlTitleTag(html)
@@ -837,6 +845,65 @@ class AmazonMetadataScraper @Inject constructor() {
         return result
     }
 
+    /**
+     * Verifies that the product page's ISBN matches the one we searched for.
+     * Checks ISBN-13 and ISBN-10 from the page's detail fields and HTML content.
+     * Returns true if we can confirm a match OR if we can't find any ISBN on the page
+     * (some pages don't show ISBNs, and we don't want to discard them).
+     */
+    private fun verifyIsbnMatch(html: String, searchedIsbn: String, asin: String, details: Map<String, String>): Boolean {
+        val pageIsbn13 = details.getByKeys("ISBN-13")
+            ?: extractDetailBullet(html, "ISBN-13")
+        val pageIsbn10 = details.getByKeys("ISBN-10")
+            ?: extractDetailBullet(html, "ISBN-10")
+
+        // If we can't find ANY ISBN on the page, allow it (some pages don't show ISBNs)
+        if (pageIsbn13 == null && pageIsbn10 == null) return true
+
+        // Clean ISBNs for comparison (remove hyphens, spaces)
+        val cleanSearched = searchedIsbn.replace(Regex("""[-\s]"""), "")
+
+        if (pageIsbn13 != null) {
+            val cleanPage13 = pageIsbn13.replace(Regex("""[-\s]"""), "")
+            if (cleanPage13 == cleanSearched) return true
+        }
+
+        if (pageIsbn10 != null) {
+            val cleanPage10 = pageIsbn10.replace(Regex("""[-\s]"""), "")
+            if (cleanPage10 == cleanSearched) return true
+            // If we searched ISBN-13, check if the page's ISBN-10 is the converted form
+            if (cleanSearched.length == 13 && cleanSearched.startsWith("978")) {
+                val convertedIsbn10 = convertIsbn13ToIsbn10(cleanSearched)
+                if (convertedIsbn10 != null && cleanPage10 == convertedIsbn10) return true
+            }
+        }
+
+        // ASIN that looks like ISBN-10 can also match
+        if (!asin.startsWith("B") && asin.length == 10) {
+            if (asin == cleanSearched) return true
+            if (cleanSearched.length == 13 && cleanSearched.startsWith("978")) {
+                val convertedIsbn10 = convertIsbn13ToIsbn10(cleanSearched)
+                if (convertedIsbn10 != null && asin == convertedIsbn10) return true
+            }
+        }
+
+        DebugLog.w(TAG, "ISBN mismatch: searched=$cleanSearched, page13=$pageIsbn13, page10=$pageIsbn10, asin=$asin")
+        return false
+    }
+
+    /** Converts ISBN-13 (978 prefix) to ISBN-10. */
+    private fun convertIsbn13ToIsbn10(isbn13: String): String? {
+        if (isbn13.length != 13 || !isbn13.startsWith("978")) return null
+        val body = isbn13.substring(3, 12)
+        var sum = 0
+        for (i in body.indices) {
+            sum += (10 - i) * (body[i] - '0')
+        }
+        val check = (11 - (sum % 11)) % 11
+        val checkChar = if (check == 10) "X" else check.toString()
+        return body + checkChar
+    }
+
     /** Validates a genre/category name. Filters out generic labels and noise. */
     private fun isValidGenre(text: String): Boolean {
         val lower = text.lowercase().trim()
@@ -1126,7 +1193,7 @@ class AmazonMetadataScraper @Inject constructor() {
     }
 
     private fun isValidAuthor(text: String): Boolean {
-        val lower = text.lowercase()
+        val lower = text.lowercase().trim()
         return text.length >= 2 &&
             !lower.contains("see all") &&
             !lower.contains("details") &&
@@ -1141,7 +1208,31 @@ class AmazonMetadataScraper @Inject constructor() {
             !lower.startsWith("a ") &&
             !lower.startsWith("@") &&
             !lower.startsWith("http") &&
-            !lower.startsWith("(") // parenthetical like "(The Series)"
+            !lower.startsWith("(") && // parenthetical like "(The Series)"
+            // Filter placeholder text (Amazon pre-release books)
+            !lower.contains("to be confirmed") &&
+            !lower.contains("to be announced") &&
+            lower != "tbd" && lower != "tba" && lower != "tbc" &&
+            !lower.contains("forthcoming") &&
+            !lower.contains("pre-order") &&
+            // Filter publisher names that leak into author fields
+            !isPublisherName(lower)
+    }
+
+    /** Checks if text matches a known publisher name or imprint. */
+    private fun isPublisherName(lower: String): Boolean {
+        val publishers = listOf(
+            "atria", "penguin", "harpercollins", "harper collins", "simon & schuster",
+            "simon and schuster", "random house", "hachette", "macmillan", "scholastic",
+            "bloomsbury", "vintage", "knopf", "doubleday", "bantam", "dell",
+            "ace books", "ace", "berkley", "putnam", "dutton", "plume",
+            "avon", "mira", "harlequin", "tor", "daw", "baen", "orbit",
+            "gallery", "pocket books", "scribner", "little brown", "little, brown",
+            "grand central", "forever", "st. martin", "st martin",
+            "william morrow", "piatkus", "hodder", "headline", "orion",
+            "pan macmillan", "transworld", "cornerstone", "century"
+        )
+        return publishers.any { lower == it || lower == "$it books" || lower == "$it press" }
     }
 
     private fun extractMeta(html: String, property: String): String? {
