@@ -255,7 +255,7 @@ class BookRepository @Inject constructor(
         // Google Books title search (use full title first for edition match)
         try {
             val query = if (author != "Unknown Author") {
-                "intitle:$baseTitle+inauthor:$author"
+                "intitle:$baseTitle inauthor:$author"
             } else {
                 "intitle:$baseTitle"
             }

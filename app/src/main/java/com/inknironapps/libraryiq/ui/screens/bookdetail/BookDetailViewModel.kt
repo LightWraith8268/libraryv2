@@ -157,29 +157,30 @@ class BookDetailViewModel @Inject constructor(
                 val result = bookRepository.lookupByIsbnSkipLocal(isbn)
                 if (result.book != null) {
                     val fresh = result.book
-                    // Merge: keep user-set fields, fill in missing metadata
+                    // Merge: prefer fresh metadata for most fields since user explicitly refreshed.
+                    // Keep user-editable fields (reading status, rating, notes, dates) untouched.
                     val updated = book.copy(
-                        title = if (book.title == "Unknown Title" && fresh.title != "Unknown Title") fresh.title else book.title,
-                        author = if (book.author == "Unknown Author" && fresh.author != "Unknown Author") fresh.author else book.author,
-                        description = book.description ?: fresh.description,
-                        coverUrl = book.coverUrl ?: fresh.coverUrl,
-                        pageCount = book.pageCount ?: fresh.pageCount,
-                        publisher = book.publisher ?: fresh.publisher,
-                        publishedDate = book.publishedDate ?: fresh.publishedDate,
-                        isbn10 = book.isbn10 ?: fresh.isbn10,
+                        title = if (fresh.title != "Unknown Title") fresh.title else book.title,
+                        author = if (fresh.author != "Unknown Author") fresh.author else book.author,
+                        description = fresh.description ?: book.description,
+                        coverUrl = fresh.coverUrl ?: book.coverUrl,
+                        pageCount = fresh.pageCount ?: book.pageCount,
+                        publisher = fresh.publisher ?: book.publisher,
+                        publishedDate = fresh.publishedDate ?: book.publishedDate,
+                        isbn10 = fresh.isbn10 ?: book.isbn10,
                         series = fresh.series ?: book.series,
                         seriesNumber = fresh.seriesNumber ?: book.seriesNumber,
-                        genre = book.genre ?: fresh.genre,
-                        language = book.language ?: fresh.language,
+                        genre = fresh.genre ?: book.genre,
+                        language = fresh.language ?: book.language,
                         format = book.format ?: fresh.format,
-                        subjects = book.subjects ?: fresh.subjects,
-                        asin = book.asin ?: fresh.asin,
-                        goodreadsId = book.goodreadsId ?: fresh.goodreadsId,
-                        openLibraryId = book.openLibraryId ?: fresh.openLibraryId,
-                        hardcoverId = book.hardcoverId ?: fresh.hardcoverId,
-                        edition = book.edition ?: fresh.edition,
-                        originalTitle = book.originalTitle ?: fresh.originalTitle,
-                        originalLanguage = book.originalLanguage ?: fresh.originalLanguage
+                        subjects = fresh.subjects ?: book.subjects,
+                        asin = fresh.asin ?: book.asin,
+                        goodreadsId = fresh.goodreadsId ?: book.goodreadsId,
+                        openLibraryId = fresh.openLibraryId ?: book.openLibraryId,
+                        hardcoverId = fresh.hardcoverId ?: book.hardcoverId,
+                        edition = fresh.edition ?: book.edition,
+                        originalTitle = fresh.originalTitle ?: book.originalTitle,
+                        originalLanguage = fresh.originalLanguage ?: book.originalLanguage
                     )
                     bookRepository.updateBook(updated)
                     _uiState.value = _uiState.value.copy(
