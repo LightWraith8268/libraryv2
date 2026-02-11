@@ -415,8 +415,13 @@ class SettingsViewModel @Inject constructor(
 
     fun downloadUpdate() {
         val info = _uiState.value.updateInfo ?: return
-        appUpdateManager.downloadAndInstall(info)
-        _uiState.update { it.copy(message = "Downloading update...", updateInfo = null) }
+        _uiState.update { it.copy(updateMessage = "Downloading update...", updateInfo = null) }
+        viewModelScope.launch {
+            val success = appUpdateManager.downloadAndInstall(info)
+            _uiState.update {
+                it.copy(updateMessage = if (success) null else "Download failed. Please try again.")
+            }
+        }
     }
 
     fun dismissUpdate() {
