@@ -205,6 +205,24 @@ class BookRepository @Inject constructor(
             merged = merged.copy(series = standardizeSeriesName(merged.series!!))
         }
 
+        // If no series found from APIs, check if title prefix (before ':') matches
+        // a known series in the library. Catches patterns like "Fallen Academy: Year One"
+        // where the series name is part of the title rather than in parentheses.
+        if (merged.series == null && merged.title.contains(":")) {
+            val titlePrefix = merged.title.substringBefore(":").trim()
+            if (titlePrefix.length >= 3) {
+                val normalizedPrefix = normalizeSeriesForComparison(titlePrefix)
+                val existingNames = bookDao.getAllSeriesNames()
+                val matchedSeries = existingNames.firstOrNull { existing ->
+                    normalizeSeriesForComparison(existing).equals(normalizedPrefix, ignoreCase = true)
+                }
+                if (matchedSeries != null) {
+                    DebugLog.d(TAG, "Series from title prefix '$titlePrefix': '$matchedSeries'")
+                    merged = merged.copy(series = matchedSeries)
+                }
+            }
+        }
+
         // 8. Apple Books cover (preferred source - high quality artwork)
         val appleCover = tryAppleBooksCover(merged.title, merged.author)
         if (appleCover != null) {
@@ -418,9 +436,10 @@ class BookRepository @Inject constructor(
     private suspend fun tryAmazon(isbn: String): Book? {
         return try {
             // Try product page first (ISBN-10 works as ASIN)
+            // Only 978-prefix ISBNs have an ISBN-10 equivalent (usable as Amazon ASIN)
             val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) {
                 convertIsbn13ToIsbn10(isbn)
-            } else isbn
+            } else null
             val productBook = isbn10?.let { amazonScraper.lookupByProductPage(it) }
             if (productBook != null) return productBook.copy(isbn = isbn)
 

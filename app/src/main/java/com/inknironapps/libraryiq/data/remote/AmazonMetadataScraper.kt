@@ -155,8 +155,8 @@ class AmazonMetadataScraper @Inject constructor() {
         val author = extractSearchAuthor(html)
         val imageUrl = extractSearchImage(html)
 
-        if (rawTitle == null) {
-            DebugLog.d(TAG, "No title found in search results")
+        if (rawTitle == null || !isValidTitle(rawTitle)) {
+            DebugLog.d(TAG, "No valid title in search results: ${rawTitle?.take(60)}")
             return null
         }
 
@@ -224,6 +224,12 @@ class AmazonMetadataScraper @Inject constructor() {
         // Parse ALL product details into a unified key-value map.
         // This reads from detail bullets, product details table, and product overview.
         val details = parseAllProductDetails(html)
+
+        // Validate this is actually a book product page (not a credit card, electronics, etc.)
+        if (!isBookProductPage(html, details)) {
+            DebugLog.d(TAG, "Skipping non-book product page")
+            return null
+        }
 
         // Most reliable: parse <title> tag
         // Format: "Book Title: Author Last, First: 9781234567890: Amazon.com: Books"
@@ -1044,6 +1050,37 @@ class AmazonMetadataScraper @Inject constructor() {
         if (asinRegex.find(html) != null && !html.contains("pages", ignoreCase = true)) return true
 
         return kindleAsinInTitle
+    }
+
+    /**
+     * Validates that a product page is actually a book, not a non-book product
+     * (credit cards, electronics, etc.) that can appear in Amazon search results.
+     */
+    private fun isBookProductPage(html: String, details: Map<String, String>): Boolean {
+        // Check if details contain any book-specific keys
+        val bookKeys = listOf(
+            "ISBN-13", "ISBN-10", "Publisher", "Imprint", "Print length",
+            "Paperback", "Hardcover", "Pages", "Mass Market Paperback",
+            "Board Book", "Library Binding", "Reading age", "Lexile measure"
+        )
+        if (details.keys.any { key -> bookKeys.any { it.equals(key, ignoreCase = true) } }) {
+            return true
+        }
+
+        // Check if <title> tag ends with ": Books" (standard Amazon book page pattern)
+        val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
+        val titleTag = titleRegex.find(html)?.groupValues?.get(1) ?: ""
+        if (titleTag.trimEnd().endsWith(": Books") || titleTag.contains(": Books:")) {
+            return true
+        }
+
+        // Check breadcrumbs for "Books" category
+        val breadcrumbs = extractHtmlSection(html, "wayfinding-breadcrumbs", 2000)
+        if (breadcrumbs != null && breadcrumbs.contains(">Books<", ignoreCase = true)) {
+            return true
+        }
+
+        return false
     }
 
     private fun extractFormat(html: String): String? {
