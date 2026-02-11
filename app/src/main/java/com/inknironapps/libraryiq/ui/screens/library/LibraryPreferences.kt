@@ -29,7 +29,7 @@ class LibraryPreferences @Inject constructor(
     )
         private set
 
-    fun setLayout(value: LibraryLayout) {
+    fun updateLayout(value: LibraryLayout) {
         layout = value
         prefs.edit().putString(KEY_LAYOUT, value.name).apply()
     }
@@ -37,7 +37,7 @@ class LibraryPreferences @Inject constructor(
     var gridColumns: Int by mutableIntStateOf(prefs.getInt(KEY_GRID_COLUMNS, 3))
         private set
 
-    fun setGridColumns(value: Int) {
+    fun updateGridColumns(value: Int) {
         gridColumns = value
         prefs.edit().putInt(KEY_GRID_COLUMNS, value).apply()
     }
@@ -49,7 +49,7 @@ class LibraryPreferences @Inject constructor(
     )
         private set
 
-    fun setDefaultSort(value: SortOption) {
+    fun updateDefaultSort(value: SortOption) {
         defaultSort = value
         prefs.edit().putString(KEY_DEFAULT_SORT, value.name).apply()
     }
@@ -61,7 +61,7 @@ class LibraryPreferences @Inject constructor(
     )
         private set
 
-    fun setDefaultGroup(value: GroupOption) {
+    fun updateDefaultGroup(value: GroupOption) {
         defaultGroup = value
         prefs.edit().putString(KEY_DEFAULT_GROUP, value.name).apply()
     }
@@ -69,7 +69,7 @@ class LibraryPreferences @Inject constructor(
     var showCovers: Boolean by mutableStateOf(prefs.getBoolean(KEY_SHOW_COVERS, true))
         private set
 
-    fun setShowCovers(value: Boolean) {
+    fun updateShowCovers(value: Boolean) {
         showCovers = value
         prefs.edit().putBoolean(KEY_SHOW_COVERS, value).apply()
     }
@@ -77,7 +77,7 @@ class LibraryPreferences @Inject constructor(
     var compactList: Boolean by mutableStateOf(prefs.getBoolean(KEY_COMPACT_LIST, false))
         private set
 
-    fun setCompactList(value: Boolean) {
+    fun updateCompactList(value: Boolean) {
         compactList = value
         prefs.edit().putBoolean(KEY_COMPACT_LIST, value).apply()
     }

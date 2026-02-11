@@ -135,32 +135,32 @@ class LibraryViewModel @Inject constructor(
 
     fun onSortOptionSelected(option: SortOption) {
         _sortOption.value = option
-        libraryPreferences.setDefaultSort(option)
+        libraryPreferences.updateDefaultSort(option)
     }
 
     fun onGroupOptionSelected(option: GroupOption) {
         _groupOption.value = option
-        libraryPreferences.setDefaultGroup(option)
+        libraryPreferences.updateDefaultGroup(option)
     }
 
     fun setLayout(layout: LibraryLayout) {
         _layout.value = layout
-        libraryPreferences.setLayout(layout)
+        libraryPreferences.updateLayout(layout)
     }
 
     fun setGridColumns(columns: Int) {
         _gridColumns.value = columns
-        libraryPreferences.setGridColumns(columns)
+        libraryPreferences.updateGridColumns(columns)
     }
 
     fun setShowCovers(show: Boolean) {
         _showCovers.value = show
-        libraryPreferences.setShowCovers(show)
+        libraryPreferences.updateShowCovers(show)
     }
 
     fun setCompactList(compact: Boolean) {
         _compactList.value = compact
-        libraryPreferences.setCompactList(compact)
+        libraryPreferences.updateCompactList(compact)
     }
 
     fun clearAuthorFilter() {
