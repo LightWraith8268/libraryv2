@@ -39,6 +39,11 @@ android {
             ?: System.getenv("HARDCOVER_API_TOKEN")
             ?: ""
         buildConfigField("String", "HARDCOVER_API_TOKEN", "\"$hardcoverToken\"")
+
+        val githubRepo = localProps.getProperty("GITHUB_REPO")
+            ?: System.getenv("GITHUB_REPO")
+            ?: "LightWraith8268/libraryv2"
+        buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
     }
 
     signingConfigs {

@@ -13,6 +13,8 @@ import com.inknironapps.libraryiq.R
 import com.inknironapps.libraryiq.data.billing.BillingManager
 import com.inknironapps.libraryiq.data.local.AppDatabase
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
+import com.inknironapps.libraryiq.data.update.AppUpdateManager
+import com.inknironapps.libraryiq.data.update.UpdateInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +45,9 @@ data class SettingsUiState(
     val error: String? = null,
     val message: String? = null,
     val showClearDataDialog: Boolean = false,
-    val dataCleared: Boolean = false
+    val dataCleared: Boolean = false,
+    val updateInfo: UpdateInfo? = null,
+    val isCheckingUpdate: Boolean = false
 )
 
 @HiltViewModel
@@ -51,6 +55,7 @@ class SettingsViewModel @Inject constructor(
     private val firestoreSync: FirestoreSync,
     private val billingManager: BillingManager,
     private val database: AppDatabase,
+    private val appUpdateManager: AppUpdateManager,
     val libraryPreferences: com.inknironapps.libraryiq.ui.screens.library.LibraryPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -283,6 +288,32 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(error = "Export failed: ${e.message}") }
             }
         }
+    }
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCheckingUpdate = true) }
+            val info = appUpdateManager.checkForUpdate()
+            _uiState.update {
+                it.copy(
+                    isCheckingUpdate = false,
+                    updateInfo = info,
+                    message = if (info == null) "Could not check for updates"
+                    else if (!info.isNewer) "You're on the latest version"
+                    else null
+                )
+            }
+        }
+    }
+
+    fun downloadUpdate() {
+        val info = _uiState.value.updateInfo ?: return
+        appUpdateManager.downloadAndInstall(info)
+        _uiState.update { it.copy(message = "Downloading update...", updateInfo = null) }
+    }
+
+    fun dismissUpdate() {
+        _uiState.update { it.copy(updateInfo = null) }
     }
 
     private fun String.csvEscape(): String {

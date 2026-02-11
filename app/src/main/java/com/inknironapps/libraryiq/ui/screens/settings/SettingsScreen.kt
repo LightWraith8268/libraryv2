@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import androidx.compose.material.icons.filled.SystemUpdate
 import com.inknironapps.libraryiq.util.DebugLog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -611,6 +612,20 @@ fun SettingsScreen(
                 }
             }
 
+            OutlinedButton(
+                onClick = viewModel::checkForUpdate,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isCheckingUpdate
+            ) {
+                if (uiState.isCheckingUpdate) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                } else {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (uiState.isCheckingUpdate) "Checking..." else "Check for Updates")
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -634,5 +649,38 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+
+    // Update available dialog
+    uiState.updateInfo?.let { update ->
+        if (update.isNewer) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissUpdate,
+                title = { Text("Update Available") },
+                text = {
+                    Column {
+                        Text("Version ${update.versionName} is available (you have ${BuildConfig.VERSION_NAME}).")
+                        if (update.releaseNotes.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = update.releaseNotes.take(500),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = viewModel::downloadUpdate) {
+                        Text("Download & Install")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::dismissUpdate) {
+                        Text("Later")
+                    }
+                }
+            )
+        }
     }
 }
