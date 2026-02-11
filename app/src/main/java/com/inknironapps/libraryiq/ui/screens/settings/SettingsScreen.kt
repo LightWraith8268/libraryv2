@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Share
@@ -74,6 +75,14 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val connectivityManager = remember {
+        context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    }
+    val isOnline = remember {
+        val network = connectivityManager.activeNetwork
+        val capabilities = network?.let { connectivityManager.getNetworkCapabilities(it) }
+        capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -164,7 +173,9 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (uiState.isSyncEnabled)
+                    containerColor = if (uiState.isSyncEnabled && !isOnline)
+                        MaterialTheme.colorScheme.errorContainer
+                    else if (uiState.isSyncEnabled)
                         MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surfaceVariant
                 )
@@ -177,20 +188,25 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(
-                        if (uiState.isSyncEnabled) Icons.Default.Sync
+                        if (uiState.isSyncEnabled && !isOnline) Icons.Default.CloudOff
+                        else if (uiState.isSyncEnabled) Icons.Default.Sync
                         else Icons.Default.SyncDisabled,
                         contentDescription = null,
-                        tint = if (uiState.isSyncEnabled) MaterialTheme.colorScheme.primary
+                        tint = if (uiState.isSyncEnabled && !isOnline) MaterialTheme.colorScheme.error
+                        else if (uiState.isSyncEnabled) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (uiState.isSyncEnabled) "Sync Active"
+                            text = if (uiState.isSyncEnabled && !isOnline) "Offline"
+                            else if (uiState.isSyncEnabled) "Sync Active"
                             else "Sync Disabled",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (uiState.isSyncEnabled)
+                            text = if (uiState.isSyncEnabled && !isOnline)
+                                "Changes will sync when reconnected"
+                            else if (uiState.isSyncEnabled)
                                 "Library syncs across devices in real-time"
                             else if (!uiState.isSignedIn)
                                 "Sign in to create or join a library"
