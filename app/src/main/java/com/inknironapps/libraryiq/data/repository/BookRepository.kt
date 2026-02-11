@@ -8,6 +8,7 @@ import com.inknironapps.libraryiq.data.local.entity.BookCollectionCrossRef
 import com.inknironapps.libraryiq.data.local.entity.BookWithCollections
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.data.remote.AmazonMetadataScraper
+import com.inknironapps.libraryiq.data.remote.BarnesNobleScraper
 import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
 import com.inknironapps.libraryiq.data.remote.GoogleBookItem
@@ -16,6 +17,7 @@ import com.inknironapps.libraryiq.data.remote.HardcoverEdition
 import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
+import com.inknironapps.libraryiq.data.remote.TargetScraper
 import com.inknironapps.libraryiq.util.DebugLog
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -41,6 +43,8 @@ class BookRepository @Inject constructor(
     private val openLibraryApiService: OpenLibraryApiService,
     private val hardcoverApiService: HardcoverApiService,
     private val amazonScraper: AmazonMetadataScraper,
+    private val barnesNobleScraper: BarnesNobleScraper,
+    private val targetScraper: TargetScraper,
     private val iTunesApiService: ITunesApiService,
     private val firestoreSync: FirestoreSync
 ) {
@@ -103,10 +107,14 @@ class BookRepository @Inject constructor(
      * 2. Google Books (isbn: prefix)
      * 3. Google Books (general search - catches books not formally indexed by ISBN)
      * 4. Google Books (ISBN-10 variant if ISBN-13 was scanned)
-     * 5. Open Library (direct ISBN endpoint)
-     * 6. Open Library (search endpoint)
-     * 7. Hardcover API (if token configured)
-     * 8. Amazon product page scraping (like Calibre)
+     * 5. Open Library (direct ISBN endpoint + search fallback)
+     * 6. Hardcover API (if token configured)
+     * 7. Amazon product page scraping (like Calibre)
+     * 8. Barnes & Noble (direct ISBN/EAN lookup)
+     * 9. Target (Specifications section)
+     * 10. Amazon title+author fallback (if ISBN missed but other sources found it)
+     * 11. Title-based enrichment from Google Books, Open Library, Hardcover
+     * 12. Apple Books cover (high-resolution artwork)
      * Merges results for the most complete metadata.
      */
     suspend fun lookupByIsbn(isbn: String): LookupResult = doLookup(isbn, skipLocal = false)
@@ -166,10 +174,35 @@ class BookRepository @Inject constructor(
         val amazonBook = tryAmazon(isbn)
         diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
 
+        // 7. Barnes & Noble (direct ISBN lookup, excellent metadata)
+        val bnBook = tryBarnesNoble(isbn)
+        diag.add(if (bnBook != null) "BN: ${bnBook.title}" else "BN: miss")
+
+        // 8. Target (Specifications section has comprehensive details)
+        val targetBook = tryTarget(isbn)
+        diag.add(if (targetBook != null) "TGT: ${targetBook.title}" else "TGT: miss")
+
+        // 9. Amazon title+author fallback: if Amazon ISBN search missed but we have
+        // title+author from other sources, retry Amazon with title+author search.
+        // This catches KDP/self-published books with Amazon-issued ISBNs that other
+        // sources found but Amazon's ISBN search didn't return directly.
+        val amazonTitleBook = if (amazonBook == null) {
+            val knownTitle = bnBook?.title ?: targetBook?.title ?: hardcoverBook?.title
+                ?: openLibraryBook?.title ?: googleBook?.title ?: googleGeneralBook?.title
+            val knownAuthor = bnBook?.author ?: targetBook?.author ?: hardcoverBook?.author
+                ?: openLibraryBook?.author ?: googleBook?.author ?: googleGeneralBook?.author
+            if (knownTitle != null && knownTitle != "Unknown Title") {
+                tryAmazonByTitleAuthor(knownTitle, knownAuthor ?: "Unknown Author", isbn).also {
+                    diag.add(if (it != null) "AMZ(title): ${it.title}" else "AMZ(title): miss")
+                }
+            } else null
+        } else null
+
         // Collect all ISBN-based results and merge.
         // Each field picks the most complete/accurate value across all sources.
         val isbnSources = listOfNotNull(
-            amazonBook, hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
+            amazonBook, amazonTitleBook, bnBook, targetBook,
+            hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
         )
 
         if (isbnSources.isEmpty()) {
@@ -507,6 +540,48 @@ class BookRepository @Inject constructor(
         } catch (e: Exception) {
             DebugLog.e(TAG, "Amazon scraper error: ${e.message}")
             lastErrors.add("AMZ: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryBarnesNoble(isbn: String): Book? {
+        return try {
+            barnesNobleScraper.lookupByIsbn(isbn).also {
+                DebugLog.d(TAG, "Barnes & Noble: ${it?.title ?: "not found"}")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Barnes & Noble error: ${e.message}")
+            lastErrors.add("BN: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryTarget(isbn: String): Book? {
+        return try {
+            targetScraper.lookupByIsbn(isbn).also {
+                DebugLog.d(TAG, "Target: ${it?.title ?: "not found"}")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Target error: ${e.message}")
+            lastErrors.add("TGT: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryAmazonByTitleAuthor(title: String, author: String, isbn: String): Book? {
+        return try {
+            amazonScraper.lookupByTitleAuthor(title, author, isbn).also {
+                DebugLog.d(TAG, "Amazon (title+author): ${it?.title ?: "not found"}")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Amazon title+author error: ${e.message}")
+            lastErrors.add("AMZ(title): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
