@@ -101,6 +101,25 @@ fun BookGridCard(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Series
+            if (book.series != null) {
+                val seriesText = buildString {
+                    append(book.series)
+                    if (book.seriesNumber != null) {
+                        append(" #${book.seriesNumber}")
+                    }
+                }
+                Text(
+                    text = seriesText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             Spacer(modifier = Modifier.height(4.dp))
 
             // Status and rating row
