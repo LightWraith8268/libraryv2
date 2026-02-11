@@ -70,9 +70,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add gradle.properties CHANGELOG.md
           git commit -m "chore: bump version to ${VERSION} (build ${BUILD}) [skip ci]"
+          git pull --rebase origin main
           git push origin main
 
       - name: Set up JDK 17
