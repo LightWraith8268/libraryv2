@@ -207,9 +207,12 @@ class BookRepository @Inject constructor(
 
         // If no series found from APIs, check if title prefix (before ':') matches
         // a known series in the library. Catches patterns like "Fallen Academy: Year One"
-        // where the series name is part of the title rather than in parentheses.
+        // or "Gods of the Game Book 1: Subtitle" where the series is part of the title.
         if (merged.series == null && merged.title.contains(":")) {
             val titlePrefix = merged.title.substringBefore(":").trim()
+                // Strip trailing "Book N", "#N", "Volume N", ", N" from prefix
+                .replace(Regex("""\s*(?:,\s*#?\s*|(?:Book|Volume|Vol\.?|#)\s*)\d+\s*$""", RegexOption.IGNORE_CASE), "")
+                .trim()
             if (titlePrefix.length >= 3) {
                 val normalizedPrefix = normalizeSeriesForComparison(titlePrefix)
                 val existingNames = bookDao.getAllSeriesNames()
@@ -761,9 +764,10 @@ class BookRepository @Inject constructor(
             .replace(Regex("""\s*\(\s*(?:A\s+)?\w+\s+Novel\s*\)""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+(?:Hardcover|Paperback|Mass\s+Market).*$""", RegexOption.IGNORE_CASE), "")
         // Strip series parenthetical if we know the series name
+        // Handles: (Series Book 1), (Series #1), (Series, 1), (Series, #1), (Series)
         if (seriesName != null) {
             cleaned = cleaned.replace(
-                Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:Book|Vol\.?|#)\s*\d+)?\s*\)""", RegexOption.IGNORE_CASE), ""
+                Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:,\s*#?\s*|(?:Book|Volume|Vol\.?|#)\s*)\d+)?\s*\)""", RegexOption.IGNORE_CASE), ""
             )
         }
         // Strip anything from the first '(' onward — removes edition, series, format info in parens
