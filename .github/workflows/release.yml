@@ -17,6 +17,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Bump version
         id: version
@@ -165,6 +168,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
           git add gradle.properties
           git commit -m "chore: bump version to ${VERSION} (build ${BUILD}) [skip ci]"
-          git push
+          git push origin main
