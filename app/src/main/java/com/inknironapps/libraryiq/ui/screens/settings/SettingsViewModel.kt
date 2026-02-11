@@ -148,10 +148,6 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun createLibrary() {
-        if (!billingManager.hasProAccess) {
-            _uiState.update { it.copy(error = "A subscription is required to create a library") }
-            return
-        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             val result = firestoreSync.createLibrary()

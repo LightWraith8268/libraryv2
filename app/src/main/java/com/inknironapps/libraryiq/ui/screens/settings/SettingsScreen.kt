@@ -343,47 +343,39 @@ fun SettingsScreen(
                         Text("Leave Library")
                     }
                 } else {
-                    // No library yet - create (requires subscription) or join (free)
-                    if (uiState.hasProAccess) {
-                        Text(
-                            text = "Create a library or join an existing one to sync between devices.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // No library yet - create or join
+                    Text(
+                        text = "Create a library or join an existing one to sync between devices.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                        Button(
-                            onClick = viewModel::createLibrary,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !uiState.isLoading
-                        ) {
-                            if (uiState.isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Text("Create Library")
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HorizontalDivider(modifier = Modifier.weight(1f))
-                            Text(
-                                "  OR  ",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Button(
+                        onClick = viewModel::createLibrary,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading
+                    ) {
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
-                            HorizontalDivider(modifier = Modifier.weight(1f))
+                        } else {
+                            Text("Create Library")
                         }
-                    } else {
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(modifier = Modifier.weight(1f))
                         Text(
-                            text = "Join an existing library with a code, or subscribe to create your own.",
+                            "  OR  ",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        HorizontalDivider(modifier = Modifier.weight(1f))
                     }
 
                     OutlinedTextField(
