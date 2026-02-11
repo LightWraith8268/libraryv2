@@ -4,7 +4,7 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.8.6] - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11
+## [1.8.7] - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11 - 2026-02-11
 
 ### Added
 - In-app update checker — download and install updates directly from GitHub releases (sideloaded installs only)
