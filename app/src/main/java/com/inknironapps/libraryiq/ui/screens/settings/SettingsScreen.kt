@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncDisabled
 import androidx.compose.material3.AlertDialog
@@ -478,6 +479,30 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Export Library as CSV")
             }
+
+            OutlinedButton(
+                onClick = viewModel::refreshLibraryMetadata,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isRefreshingLibrary
+            ) {
+                if (uiState.isRefreshingLibrary) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                } else {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    if (uiState.isRefreshingLibrary)
+                        "Refreshing ${uiState.refreshProgress}/${uiState.refreshTotal}..."
+                    else "Refresh Library Metadata"
+                )
+            }
+
+            Text(
+                text = "Re-fetches metadata (titles, covers, series, descriptions) for all books from online sources. User data like ratings, notes, and reading status are preserved.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Button(
                 onClick = viewModel::showClearDataDialog,

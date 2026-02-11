@@ -13,6 +13,7 @@ import com.inknironapps.libraryiq.R
 import com.inknironapps.libraryiq.data.billing.BillingManager
 import com.inknironapps.libraryiq.data.local.AppDatabase
 import com.inknironapps.libraryiq.data.remote.FirestoreSync
+import com.inknironapps.libraryiq.data.repository.BookRepository
 import com.inknironapps.libraryiq.data.update.AppUpdateManager
 import com.inknironapps.libraryiq.data.update.UpdateInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -48,7 +49,10 @@ data class SettingsUiState(
     val dataCleared: Boolean = false,
     val updateInfo: UpdateInfo? = null,
     val isCheckingUpdate: Boolean = false,
-    val isSideloaded: Boolean = false
+    val isSideloaded: Boolean = false,
+    val isRefreshingLibrary: Boolean = false,
+    val refreshProgress: Int = 0,
+    val refreshTotal: Int = 0
 )
 
 @HiltViewModel
@@ -56,6 +60,7 @@ class SettingsViewModel @Inject constructor(
     private val firestoreSync: FirestoreSync,
     private val billingManager: BillingManager,
     private val database: AppDatabase,
+    private val bookRepository: BookRepository,
     private val appUpdateManager: AppUpdateManager,
     val libraryPreferences: com.inknironapps.libraryiq.ui.screens.library.LibraryPreferences,
     @ApplicationContext private val context: Context
@@ -237,6 +242,77 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
             )
+        }
+    }
+
+    fun refreshLibraryMetadata() {
+        viewModelScope.launch {
+            val books = withContext(Dispatchers.IO) {
+                database.bookDao().getAllBooksList()
+            }
+            val booksWithIsbn = books.filter { !it.isbn.isNullOrBlank() }
+            if (booksWithIsbn.isEmpty()) {
+                _uiState.update { it.copy(message = "No books with ISBNs to refresh") }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    isRefreshingLibrary = true,
+                    refreshProgress = 0,
+                    refreshTotal = booksWithIsbn.size,
+                    message = "Refreshing metadata: 0/${booksWithIsbn.size}..."
+                )
+            }
+            var updated = 0
+            for ((index, book) in booksWithIsbn.withIndex()) {
+                try {
+                    val result = bookRepository.lookupByIsbnSkipLocal(book.isbn!!)
+                    if (result.book != null) {
+                        val fresh = result.book
+                        val merged = book.copy(
+                            title = if (fresh.title != "Unknown Title") fresh.title else book.title,
+                            author = if (fresh.author != "Unknown Author") fresh.author else book.author,
+                            description = fresh.description ?: book.description,
+                            coverUrl = fresh.coverUrl ?: book.coverUrl,
+                            pageCount = fresh.pageCount ?: book.pageCount,
+                            publisher = fresh.publisher ?: book.publisher,
+                            publishedDate = fresh.publishedDate ?: book.publishedDate,
+                            isbn10 = fresh.isbn10 ?: book.isbn10,
+                            series = fresh.series ?: book.series,
+                            seriesNumber = fresh.seriesNumber ?: book.seriesNumber,
+                            genre = fresh.genre ?: book.genre,
+                            language = fresh.language ?: book.language,
+                            format = book.format ?: fresh.format,
+                            subjects = fresh.subjects ?: book.subjects,
+                            asin = fresh.asin ?: book.asin,
+                            goodreadsId = fresh.goodreadsId ?: book.goodreadsId,
+                            openLibraryId = fresh.openLibraryId ?: book.openLibraryId,
+                            hardcoverId = fresh.hardcoverId ?: book.hardcoverId,
+                            edition = fresh.edition ?: book.edition,
+                            originalTitle = fresh.originalTitle ?: book.originalTitle,
+                            originalLanguage = fresh.originalLanguage ?: book.originalLanguage
+                        )
+                        bookRepository.updateBook(merged)
+                        updated++
+                    }
+                } catch (_: Exception) {
+                    // Skip failed books, continue with next
+                }
+                _uiState.update {
+                    it.copy(
+                        refreshProgress = index + 1,
+                        message = "Refreshing metadata: ${index + 1}/${booksWithIsbn.size}..."
+                    )
+                }
+            }
+            _uiState.update {
+                it.copy(
+                    isRefreshingLibrary = false,
+                    refreshProgress = 0,
+                    refreshTotal = 0,
+                    message = "Metadata refreshed for $updated of ${booksWithIsbn.size} books"
+                )
+            }
         }
     }
 
