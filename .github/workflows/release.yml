@@ -56,12 +56,86 @@ jobs:
           echo "version_name=${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}" >> $GITHUB_OUTPUT
           echo "version_code=$NEW_BUILD" >> $GITHUB_OUTPUT
 
-      - name: Update changelog version
+      - name: Generate changelog from commits
         run: |
           VERSION_NAME="${{ steps.version.outputs.version_name }}"
           TODAY=$(date +%Y-%m-%d)
-          # Update the first ## [x.x.x] header to the new version and today's date
-          sed -i "0,/^## \[.*\]/s/^## \[.*\]/## [${VERSION_NAME}] - ${TODAY}/" CHANGELOG.md
+
+          # Find previous release tag (most recent tag before this run)
+          PREV_TAG=$(git tag --sort=-v:refname | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            echo "Previous tag: $PREV_TAG"
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            echo "No previous tag found, using all commits"
+            RANGE="HEAD"
+          fi
+
+          # Get commit messages (skip merges and version bump commits)
+          COMMITS=$(git log --no-merges --format="%s" $RANGE \
+            | grep -v '\[skip ci\]' \
+            | grep -v '\[skip-version-bump\]' || true)
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits found since $PREV_TAG, using fallback"
+            COMMITS="Release ${VERSION_NAME}"
+          fi
+
+          # Categorize commits into Added/Changed/Fixed
+          ADDED=""
+          CHANGED=""
+          FIXED=""
+
+          while IFS= read -r msg; do
+            [ -z "$msg" ] && continue
+
+            # Strip conventional commit prefix for cleaner display
+            CLEAN=$(echo "$msg" | sed -E 's/^(feat|fix|refactor|chore|docs|style|perf|test|build|ci)(\([^)]*\))?[!]?:\s*//')
+            # Capitalize first letter
+            CLEAN="$(echo "${CLEAN:0:1}" | tr '[:lower:]' '[:upper:]')${CLEAN:1}"
+
+            if echo "$msg" | grep -qiE '^feat(\(|:|!:)|^Add |^Implement '; then
+              ADDED="${ADDED}- ${CLEAN}"$'\n'
+            elif echo "$msg" | grep -qiE '^fix(\(|:|!:)|^Fix |^Resolve '; then
+              FIXED="${FIXED}- ${CLEAN}"$'\n'
+            else
+              CHANGED="${CHANGED}- ${CLEAN}"$'\n'
+            fi
+          done <<< "$COMMITS"
+
+          # Build the new changelog section
+          {
+            echo "## [${VERSION_NAME}] - ${TODAY}"
+            echo ""
+            if [ -n "$ADDED" ]; then
+              echo "### Added"
+              echo "$ADDED"
+            fi
+            if [ -n "$CHANGED" ]; then
+              echo "### Changed"
+              echo "$CHANGED"
+            fi
+            if [ -n "$FIXED" ]; then
+              echo "### Fixed"
+              echo "$FIXED"
+            fi
+          } > /tmp/new_section.md
+
+          echo "Generated changelog section:"
+          cat /tmp/new_section.md
+
+          # Insert new section into CHANGELOG.md before the first existing ## entry
+          FIRST_SECTION_LINE=$(grep -n "^## \[" CHANGELOG.md | head -1 | cut -d: -f1)
+          if [ -n "$FIRST_SECTION_LINE" ]; then
+            head -n $((FIRST_SECTION_LINE - 1)) CHANGELOG.md > /tmp/changelog_new.md
+            cat /tmp/new_section.md >> /tmp/changelog_new.md
+            tail -n +$FIRST_SECTION_LINE CHANGELOG.md >> /tmp/changelog_new.md
+          else
+            cat CHANGELOG.md > /tmp/changelog_new.md
+            echo "" >> /tmp/changelog_new.md
+            cat /tmp/new_section.md >> /tmp/changelog_new.md
+          fi
+          mv /tmp/changelog_new.md CHANGELOG.md
 
       - name: Commit version bump
         run: |
