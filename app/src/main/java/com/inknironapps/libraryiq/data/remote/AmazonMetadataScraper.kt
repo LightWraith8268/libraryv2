@@ -280,9 +280,10 @@ class AmazonMetadataScraper @Inject constructor() {
         val seriesInfo = if (seriesName != null) Pair(seriesName, seriesNumber) else null
 
         // Strip series parenthetical from title if we extracted it
+        // Handles: (Series Book 1), (Series #1), (Series, 1), (Series, #1), (Series)
         if (seriesName != null) {
             title = title
-                .replace(Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:Book|Vol\.?|#)\s*\d+)?\s*\)""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:,\s*#?\s*|(?:Book|Volume|Vol\.?|#)\s*)\d+)?\s*\)""", RegexOption.IGNORE_CASE), "")
                 .trim()
         }
 
