@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.18] - 2026-02-11
+
+### Fixed
+- Fix wrong authors, improve series detection, preserve manual covers
+
 ## [1.8.17] - 2026-02-11
 
 ### Fixed
