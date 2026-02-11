@@ -742,6 +742,8 @@ class BookRepository @Inject constructor(
                 Regex("""\s*\(\s*${Regex.escape(seriesName)}(?:\s*(?:Book|Vol\.?|#)\s*\d+)?\s*\)""", RegexOption.IGNORE_CASE), ""
             )
         }
+        // Strip anything from the first '(' onward — removes edition, series, format info in parens
+        cleaned = cleaned.replace(Regex("""\s*\(.*$"""), "")
         return cleaned.trim()
     }
 
