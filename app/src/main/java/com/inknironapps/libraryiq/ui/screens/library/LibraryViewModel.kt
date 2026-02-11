@@ -104,7 +104,12 @@ class LibraryViewModel @Inject constructor(
         }
         result
     }.combine(_sortOption) { bookList, sort ->
-        sortBooks(bookList, sort)
+        // When filtering by series, default to series number sort
+        if (_seriesFilter.value != null) {
+            bookList.sortedBy { it.seriesNumber?.toFloatOrNull() ?: Float.MAX_VALUE }
+        } else {
+            sortBooks(bookList, sort)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
