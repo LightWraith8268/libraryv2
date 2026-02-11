@@ -174,8 +174,8 @@ class LibraryViewModel @Inject constructor(
     private fun sortBooks(books: List<Book>, sort: SortOption): List<Book> = when (sort) {
         SortOption.TITLE_ASC -> books.sortedBy { it.title.lowercase() }
         SortOption.TITLE_DESC -> books.sortedByDescending { it.title.lowercase() }
-        SortOption.AUTHOR_ASC -> books.sortedBy { it.author.lowercase() }
-        SortOption.AUTHOR_DESC -> books.sortedByDescending { it.author.lowercase() }
+        SortOption.AUTHOR_ASC -> books.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.author.lastNameFirst() })
+        SortOption.AUTHOR_DESC -> books.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.author.lastNameFirst() })
         SortOption.DATE_ADDED_DESC -> books.sortedByDescending { it.dateAdded }
         SortOption.DATE_ADDED_ASC -> books.sortedBy { it.dateAdded }
         SortOption.RATING_DESC -> books.sortedByDescending { it.rating ?: 0f }
@@ -191,7 +191,8 @@ class LibraryViewModel @Inject constructor(
         }
         GroupOption.AUTHOR -> {
             books.groupBy { it.author }
-                .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+                .entries
+                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.key.lastNameFirst() })
                 .map { (author, list) -> GroupedBooks(author, list) }
         }
         GroupOption.SERIES -> {
@@ -244,5 +245,15 @@ class LibraryViewModel @Inject constructor(
         ReadingStatus.READING -> "Reading"
         ReadingStatus.READ -> "Read"
         ReadingStatus.WANT_TO_READ -> "Want to Read"
+    }
+}
+
+/** Rearranges "First Middle Last" → "Last, First Middle" for sorting by last name. */
+private fun String.lastNameFirst(): String {
+    val parts = trim().split("\\s+".toRegex())
+    return if (parts.size > 1) {
+        "${parts.last()}, ${parts.dropLast(1).joinToString(" ")}"
+    } else {
+        this
     }
 }
