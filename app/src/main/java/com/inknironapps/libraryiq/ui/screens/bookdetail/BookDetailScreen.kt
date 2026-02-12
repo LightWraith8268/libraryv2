@@ -56,7 +56,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -616,6 +618,50 @@ fun BookDetailScreen(
                     )
                 }
 
+                // --- Metadata Sources ---
+                if (!book.metadataSources.isNullOrBlank()) {
+                    HorizontalDivider()
+                    Text(
+                        text = "Metadata Sources",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    val uriHandler = LocalUriHandler.current
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            book.metadataSources.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                .forEach { source ->
+                                    val url = buildSourceUrl(source, book)
+                                    if (url != null) {
+                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = source,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    textDecoration = TextDecoration.Underline
+                                                ),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.clickable { uriHandler.openUri(url) }
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = source,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                        }
+                    }
+                }
+
                 // --- Tags ---
                 HorizontalDivider()
                 Text(
@@ -874,6 +920,26 @@ private fun MetadataRow(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+/**
+ * Builds a URL for a metadata source based on available book identifiers.
+ * Returns null if no URL can be constructed for the given source.
+ */
+private fun buildSourceUrl(source: String, book: com.inknironapps.libraryiq.data.local.entity.Book): String? {
+    val isbn = book.isbn
+    val isbn10 = book.isbn10
+    return when (source) {
+        "Google Books" -> isbn?.let { "https://books.google.com/books?vid=ISBN$it" }
+        "Open Library" -> isbn?.let { "https://openlibrary.org/isbn/$it" }
+        "Hardcover" -> book.hardcoverId?.let { "https://hardcover.app/books/$it" }
+        "Amazon" -> book.asin?.let { "https://www.amazon.com/dp/$it" }
+            ?: isbn10?.let { "https://www.amazon.com/dp/$it" }
+            ?: isbn?.let { "https://www.amazon.com/s?k=$it&i=stripbooks" }
+        "Barnes & Noble" -> isbn?.let { "https://www.barnesandnoble.com/w/?ean=$it" }
+        "Target" -> isbn?.let { "https://www.target.com/s?searchTerm=$it" }
+        else -> null
     }
 }
 
