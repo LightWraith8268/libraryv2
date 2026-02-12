@@ -349,6 +349,16 @@ class BookRepository @Inject constructor(
             diag.add("Apple: skipped (ISBN cover exists)")
         }
 
+        // Build metadata sources list from which APIs returned data
+        val sources = mutableListOf<String>()
+        if (googleBook != null || googleGeneralBook != null || googleIsbn10Book != null) sources.add("Google Books")
+        if (openLibraryBook != null) sources.add("Open Library")
+        if (hardcoverBook != null) sources.add("Hardcover")
+        if (amazonBook != null || amazonTitleBook != null) sources.add("Amazon")
+        if (bnBook != null) sources.add("Barnes & Noble")
+        if (targetBook != null) sources.add("Target")
+        merged = merged.copy(metadataSources = sources.joinToString(","))
+
         val diagStr = diag.joinToString(" | ")
         DebugLog.d(TAG, "Final: ${merged.title} by ${merged.author} " +
             "[cover=${merged.coverUrl != null}, desc=${merged.description != null}, " +
@@ -1061,7 +1071,8 @@ class BookRepository @Inject constructor(
             hardcoverId = primary.hardcoverId ?: secondary.hardcoverId,
             edition = primary.edition ?: secondary.edition,
             originalTitle = primary.originalTitle ?: secondary.originalTitle,
-            originalLanguage = primary.originalLanguage ?: secondary.originalLanguage
+            originalLanguage = primary.originalLanguage ?: secondary.originalLanguage,
+            metadataSources = primary.metadataSources ?: secondary.metadataSources
         )
     }
 

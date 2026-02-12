@@ -36,13 +36,20 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Track which metadata sources contributed data for each book
+        db.execSQL("ALTER TABLE books ADD COLUMN metadataSources TEXT DEFAULT NULL")
+    }
+}
+
 @Database(
     entities = [
         Book::class,
         Collection::class,
         BookCollectionCrossRef::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

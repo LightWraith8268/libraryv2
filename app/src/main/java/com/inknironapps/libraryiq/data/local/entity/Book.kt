@@ -36,6 +36,8 @@ data class Book(
     val edition: String? = null,
     val originalTitle: String? = null,
     val originalLanguage: String? = null,
+    // Comma-separated list of sources that provided metadata (e.g. "Google Books,Open Library,Amazon")
+    val metadataSources: String? = null,
     // Cover tracking: true when user manually chose a cover via the cover picker
     val coverManuallySet: Boolean = false,
     // Per-user reading tracking

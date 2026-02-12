@@ -252,7 +252,8 @@ class BookDetailViewModel @Inject constructor(
                         hardcoverId = fresh.hardcoverId ?: book.hardcoverId,
                         edition = fresh.edition ?: book.edition,
                         originalTitle = fresh.originalTitle ?: book.originalTitle,
-                        originalLanguage = fresh.originalLanguage ?: book.originalLanguage
+                        originalLanguage = fresh.originalLanguage ?: book.originalLanguage,
+                        metadataSources = fresh.metadataSources ?: book.metadataSources
                     )
                     bookRepository.updateBook(updated)
                     _uiState.value = _uiState.value.copy(
