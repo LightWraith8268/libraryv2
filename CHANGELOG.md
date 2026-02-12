@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.28] - 2026-02-12
+
+### Fixed
+- Fix metadata source links not showing for existing books
+
 ## [1.8.27] - 2026-02-12
 
 ### Added
