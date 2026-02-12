@@ -619,7 +619,8 @@ fun BookDetailScreen(
                 }
 
                 // --- Metadata Sources ---
-                if (!book.metadataSources.isNullOrBlank()) {
+                val sourceLinks = buildSourceLinks(book)
+                if (sourceLinks.isNotEmpty()) {
                     HorizontalDivider()
                     Text(
                         text = "Metadata Sources",
@@ -636,28 +637,18 @@ fun BookDetailScreen(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            book.metadataSources.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                                .forEach { source ->
-                                    val url = buildSourceUrl(source, book)
-                                    if (url != null) {
-                                        Row(modifier = Modifier.fillMaxWidth()) {
-                                            Text(
-                                                text = source,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    textDecoration = TextDecoration.Underline
-                                                ),
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.clickable { uriHandler.openUri(url) }
-                                            )
-                                        }
-                                    } else {
-                                        Text(
-                                            text = source,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                            sourceLinks.forEach { (source, url) ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = source,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            textDecoration = TextDecoration.Underline
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.clickable { uriHandler.openUri(url) }
+                                    )
                                 }
+                            }
                         }
                     }
                 }
@@ -924,23 +915,34 @@ private fun MetadataRow(label: String, value: String) {
 }
 
 /**
- * Builds a URL for a metadata source based on available book identifiers.
- * Returns null if no URL can be constructed for the given source.
+ * Builds a list of (sourceName, url) pairs for metadata sources.
+ * If [Book.metadataSources] is set, uses that list filtered to sources with constructable URLs.
+ * Otherwise, infers sources from available identifiers (ISBN, ASIN, etc.) so
+ * existing books added before this feature still show links.
  */
-private fun buildSourceUrl(source: String, book: com.inknironapps.libraryiq.data.local.entity.Book): String? {
+private fun buildSourceLinks(book: com.inknironapps.libraryiq.data.local.entity.Book): List<Pair<String, String>> {
     val isbn = book.isbn
     val isbn10 = book.isbn10
-    return when (source) {
-        "Google Books" -> isbn?.let { "https://books.google.com/books?vid=ISBN$it" }
-        "Open Library" -> isbn?.let { "https://openlibrary.org/isbn/$it" }
-        "Hardcover" -> book.hardcoverId?.let { "https://hardcover.app/books/$it" }
-        "Amazon" -> book.asin?.let { "https://www.amazon.com/dp/$it" }
-            ?: isbn10?.let { "https://www.amazon.com/dp/$it" }
-            ?: isbn?.let { "https://www.amazon.com/s?k=$it&i=stripbooks" }
-        "Barnes & Noble" -> isbn?.let { "https://www.barnesandnoble.com/w/?ean=$it" }
-        "Target" -> isbn?.let { "https://www.target.com/s?searchTerm=$it" }
-        else -> null
+
+    // All possible source->URL mappings based on available identifiers
+    val allLinks = mutableListOf<Pair<String, String>>()
+    isbn?.let { allLinks.add("Google Books" to "https://books.google.com/books?vid=ISBN$it") }
+    isbn?.let { allLinks.add("Open Library" to "https://openlibrary.org/isbn/$it") }
+    book.hardcoverId?.let { allLinks.add("Hardcover" to "https://hardcover.app/books/$it") }
+    val amazonUrl = book.asin?.let { "https://www.amazon.com/dp/$it" }
+        ?: isbn10?.let { "https://www.amazon.com/dp/$it" }
+        ?: isbn?.let { "https://www.amazon.com/s?k=$it&i=stripbooks" }
+    amazonUrl?.let { allLinks.add("Amazon" to it) }
+    isbn?.let { allLinks.add("Barnes & Noble" to "https://www.barnesandnoble.com/w/?ean=$it") }
+    isbn?.let { allLinks.add("Target" to "https://www.target.com/s?searchTerm=$it") }
+
+    // If metadataSources is set, filter to only those sources
+    if (!book.metadataSources.isNullOrBlank()) {
+        val tracked = book.metadataSources.split(",").map { it.trim() }.toSet()
+        return allLinks.filter { it.first in tracked }
     }
+
+    return allLinks
 }
 
 @Composable
