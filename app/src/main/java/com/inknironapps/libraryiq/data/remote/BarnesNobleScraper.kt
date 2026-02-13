@@ -416,9 +416,11 @@ class BarnesNobleScraper @Inject constructor() {
     }
 
     private fun extractSeriesFromDetails(details: Map<String, String>): String? {
-        return details["Series"]
+        val raw = details["Series"]
             ?: details["Series Title"]
             ?: details["series"]
+            ?: return null
+        return raw.takeUnless { isFormatNotSeries(it) }
     }
 
     private fun extractSeriesNumberFromDetails(details: Map<String, String>): String? {
@@ -433,7 +435,19 @@ class BarnesNobleScraper @Inject constructor() {
         if (title == null) return null
         // Pattern: "Title (Series Name Book N)"
         val regex = """\(([^)]+?)(?:\s+(?:Book|Volume|Vol\.?|#)\s*\d+)?\)""".toRegex(RegexOption.IGNORE_CASE)
-        return regex.find(title)?.groupValues?.get(1)?.trim()
+        val candidate = regex.find(title)?.groupValues?.get(1)?.trim() ?: return null
+        return candidate.takeUnless { isFormatNotSeries(it) }
+    }
+
+    /** Rejects format/edition strings that scrapers sometimes return as series names. */
+    private fun isFormatNotSeries(name: String): Boolean {
+        val lower = name.lowercase().trim()
+        val formatKeywords = listOf(
+            "audible", "audio", "kindle", "ebook", "e-book", "paperback",
+            "hardcover", "hardback", "edition", "mass market", "board book",
+            "library binding", "cd", "mp3", "digital"
+        )
+        return formatKeywords.any { lower.contains(it) }
     }
 
     // =====================================================================

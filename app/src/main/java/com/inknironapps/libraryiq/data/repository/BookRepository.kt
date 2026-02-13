@@ -199,10 +199,12 @@ class BookRepository @Inject constructor(
         } else null
 
         // Collect all ISBN-based results and merge.
-        // Each field picks the most complete/accurate value across all sources.
+        // API sources first (higher trust / structured data), then scrapers
+        // (fill gaps only). The fold gives earlier items priority for
+        // "first non-null wins" fields like coverUrl, language, format.
         val isbnSources = listOfNotNull(
-            amazonBook, amazonTitleBook, bnBook, targetBook,
-            hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
+            hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book,
+            amazonBook, amazonTitleBook, bnBook, targetBook
         )
 
         if (isbnSources.isEmpty()) {
@@ -274,6 +276,26 @@ class BookRepository @Inject constructor(
         }
         if (merged.seriesNumber?.isBlank() == true) {
             merged = merged.copy(seriesNumber = null)
+        }
+
+        // Reject format/edition strings that scrapers sometimes return as series names
+        if (merged.series != null && isFormatNotSeries(merged.series!!)) {
+            DebugLog.d(TAG, "Rejected series '${merged.series}' as format/edition info")
+            merged = merged.copy(series = null, seriesNumber = null)
+        }
+
+        // If we have a series name but no number, try to extract it from the title.
+        // Catches patterns like "Book Title (Series Name Book 3)", "Title #2", etc.
+        if (merged.series != null && merged.seriesNumber == null) {
+            val title = merged.title
+            val numFromTitle = Regex(
+                """(?:Book|Volume|Vol\.?|#|,)\s*(\d+)""",
+                RegexOption.IGNORE_CASE
+            ).find(title)?.groupValues?.get(1)
+            if (numFromTitle != null) {
+                DebugLog.d(TAG, "Series number from title: #$numFromTitle")
+                merged = merged.copy(seriesNumber = numFromTitle)
+            }
         }
 
         // Standardize series name to match existing books in the library
@@ -854,6 +876,17 @@ class BookRepository @Inject constructor(
             DebugLog.e(TAG, "Hardcover series search error: ${e.message}")
             null
         }
+    }
+
+    /** Rejects format/edition strings that scrapers sometimes return as series names. */
+    private fun isFormatNotSeries(name: String): Boolean {
+        val lower = name.lowercase().trim()
+        val formatKeywords = listOf(
+            "audible", "audio", "kindle", "ebook", "e-book", "paperback",
+            "hardcover", "hardback", "edition", "mass market", "board book",
+            "library binding", "cd", "mp3", "digital"
+        )
+        return formatKeywords.any { lower.contains(it) }
     }
 
     companion object {

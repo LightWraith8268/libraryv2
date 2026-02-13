@@ -1029,7 +1029,13 @@ class AmazonMetadataScraper @Inject constructor() {
                 "special edition", "anniversary edition", "collector's edition",
                 "deluxe edition", "limited edition", "first edition"
             )
-            val isNotSeries = nonSeriesPatterns.any { pattern ->
+            val formatKeywords = listOf(
+                "audible", "audio", "kindle", "ebook", "e-book", "paperback",
+                "hardcover", "hardback", "edition", "mass market", "board book",
+                "library binding", "cd", "mp3", "digital"
+            )
+            val containsFormat = formatKeywords.any { c.contains(it) }
+            val isNotSeries = containsFormat || nonSeriesPatterns.any { pattern ->
                 c == pattern || c.startsWith("$pattern ") || c.startsWith("a ") && c.endsWith(" novel")
             }
             if (isNotSeries) return null
