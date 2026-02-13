@@ -2,6 +2,7 @@ package com.inknironapps.libraryiq.ui.screens.bookdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -138,6 +139,7 @@ fun BookDetailScreen(
                 modifier = Modifier.padding(16.dp)
             )
         } else {
+            SelectionContainer {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -789,6 +791,7 @@ fun BookDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
+            } // SelectionContainer
         }
     }
 
