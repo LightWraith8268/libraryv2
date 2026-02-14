@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.inknironapps.libraryiq.data.local.entity.Book
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.data.repository.BookRepository
+import com.inknironapps.libraryiq.data.repository.SearchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +31,12 @@ data class AddBookUiState(
     val isLoading: Boolean = false,
     val isLookingUp: Boolean = false,
     val isSaved: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    // Interactive search state
+    val searchResults: List<SearchResult> = emptyList(),
+    val isSearching: Boolean = false,
+    val showSearchResults: Boolean = false,
+    val isLoadingSelection: Boolean = false
 )
 
 @HiltViewModel
@@ -103,6 +109,117 @@ class AddBookViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Searches for books by title and optional author.
+     * Shows search results for the user to select from.
+     */
+    fun searchBooks() {
+        val title = _uiState.value.title.trim()
+        if (title.isBlank()) return
+
+        val author = _uiState.value.author.trim().ifBlank { null }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isSearching = true,
+                    error = null,
+                    searchResults = emptyList(),
+                    showSearchResults = true
+                )
+            }
+            try {
+                val results = bookRepository.searchByTitleAuthor(title, author)
+                _uiState.update {
+                    it.copy(
+                        searchResults = results,
+                        isSearching = false,
+                        error = if (results.isEmpty()) "No books found. Try different search terms." else null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSearching = false,
+                        error = "Search failed: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Called when the user selects a search result.
+     * If the result has an ISBN, performs a full ISBN lookup to get complete metadata.
+     * Otherwise, populates the form with whatever data we have.
+     */
+    fun selectSearchResult(result: SearchResult) {
+        val isbn = result.isbn
+        if (!isbn.isNullOrBlank()) {
+            // Full ISBN lookup for complete metadata with merging from all sources
+            viewModelScope.launch {
+                _uiState.update {
+                    it.copy(
+                        isLoadingSelection = true,
+                        showSearchResults = false,
+                        error = null
+                    )
+                }
+                try {
+                    val lookupResult = bookRepository.lookupByIsbn(isbn)
+                    val book = lookupResult.book
+                    if (book != null) {
+                        _uiState.update {
+                            it.copy(
+                                title = book.title,
+                                author = book.author,
+                                isbn = book.isbn ?: isbn,
+                                description = book.description ?: "",
+                                pageCount = book.pageCount?.toString() ?: "",
+                                publisher = book.publisher ?: "",
+                                publishedDate = book.publishedDate ?: "",
+                                coverUrl = book.coverUrl ?: "",
+                                series = book.series ?: "",
+                                seriesNumber = book.seriesNumber ?: "",
+                                language = book.language ?: "",
+                                isLoadingSelection = false
+                            )
+                        }
+                    } else {
+                        // ISBN lookup returned nothing - use the search result data directly
+                        populateFromSearchResult(result)
+                    }
+                } catch (e: Exception) {
+                    // Fallback to search result data
+                    populateFromSearchResult(result)
+                }
+            }
+        } else {
+            // No ISBN - populate from search result directly
+            populateFromSearchResult(result)
+        }
+    }
+
+    private fun populateFromSearchResult(result: SearchResult) {
+        _uiState.update {
+            it.copy(
+                title = result.title,
+                author = result.author,
+                isbn = result.isbn ?: "",
+                coverUrl = result.coverUrl ?: "",
+                publisher = result.publisher ?: "",
+                publishedDate = result.publishedDate ?: "",
+                pageCount = result.pageCount?.toString() ?: "",
+                showSearchResults = false,
+                isLoadingSelection = false
+            )
+        }
+    }
+
+    fun dismissSearchResults() {
+        _uiState.update { it.copy(showSearchResults = false) }
     }
 
     fun saveBook() {
