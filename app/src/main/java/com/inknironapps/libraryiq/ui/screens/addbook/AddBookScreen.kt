@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -115,7 +117,8 @@ fun AddBookScreen(
                 onValueChange = viewModel::onTitleChange,
                 label = { Text("Title *") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
             )
 
             OutlinedTextField(
@@ -123,8 +126,29 @@ fun AddBookScreen(
                 onValueChange = viewModel::onAuthorChange,
                 label = { Text("Author") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
             )
+
+            // Search by title+author across all metadata sources
+            Button(
+                onClick = viewModel::lookupByTitle,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = uiState.title.isNotBlank() && !uiState.isLookingUp
+            ) {
+                if (uiState.isLookingUp) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Searching...")
+                } else {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Search by Title")
+                }
+            }
 
             OutlinedTextField(
                 value = uiState.description,
@@ -160,7 +184,8 @@ fun AddBookScreen(
                 onValueChange = viewModel::onPublisherChange,
                 label = { Text("Publisher") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
             )
 
             // Series fields
@@ -173,7 +198,8 @@ fun AddBookScreen(
                     onValueChange = viewModel::onSeriesChange,
                     label = { Text("Series") },
                     modifier = Modifier.weight(2f),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
                 )
                 OutlinedTextField(
                     value = uiState.seriesNumber,
@@ -190,7 +216,8 @@ fun AddBookScreen(
                 onValueChange = viewModel::onLanguageChange,
                 label = { Text("Language") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
             )
 
             // Reading status

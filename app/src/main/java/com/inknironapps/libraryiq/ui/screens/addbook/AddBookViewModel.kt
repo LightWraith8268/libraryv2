@@ -105,6 +105,49 @@ class AddBookViewModel @Inject constructor(
         }
     }
 
+    fun lookupByTitle() {
+        val title = _uiState.value.title.trim()
+        if (title.isBlank()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLookingUp = true, error = null) }
+            try {
+                val author = _uiState.value.author.trim().ifBlank { null }
+                val result = bookRepository.lookupByTitle(title, author)
+                val book = result.book
+                if (book != null) {
+                    _uiState.update {
+                        it.copy(
+                            title = book.title,
+                            author = book.author,
+                            isbn = book.isbn ?: it.isbn,
+                            description = book.description ?: it.description,
+                            pageCount = book.pageCount?.toString() ?: it.pageCount,
+                            publisher = book.publisher ?: it.publisher,
+                            publishedDate = book.publishedDate ?: it.publishedDate,
+                            coverUrl = book.coverUrl ?: it.coverUrl,
+                            series = book.series ?: it.series,
+                            seriesNumber = book.seriesNumber ?: it.seriesNumber,
+                            language = book.language ?: it.language,
+                            isLookingUp = false
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLookingUp = false,
+                            error = "No book found for \"$title\"\n${result.diagnostics}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isLookingUp = false, error = "Title search failed: ${e.message}")
+                }
+            }
+        }
+    }
+
     fun saveBook() {
         val state = _uiState.value
         if (state.title.isBlank()) {

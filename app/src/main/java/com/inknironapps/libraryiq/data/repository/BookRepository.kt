@@ -126,6 +126,128 @@ class BookRepository @Inject constructor(
      */
     suspend fun lookupByIsbnSkipLocal(isbn: String): LookupResult = doLookup(isbn, skipLocal = true)
 
+    /**
+     * Searches for a book by title and optional author across all metadata sources:
+     * Google Books, Open Library, Hardcover, Amazon, Barnes & Noble.
+     * Results from each source are merged into a single best-effort Book.
+     */
+    suspend fun lookupByTitle(title: String, author: String?): LookupResult {
+        val diag = mutableListOf<String>()
+        val cleanAuthor = author?.takeIf { it.isNotBlank() } ?: "Unknown Author"
+
+        val results = mutableListOf<Book>()
+
+        // Query all API sources in parallel
+        coroutineScope {
+            val gbDeferred = async {
+                try {
+                    val query = if (cleanAuthor != "Unknown Author") {
+                        "intitle:\"$title\" inauthor:\"$cleanAuthor\""
+                    } else {
+                        "intitle:\"$title\""
+                    }
+                    val response = bookApiService.searchByIsbn(query)
+                    response.items?.firstOrNull()?.let { googleBookToBook(it) }
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "GB(title-search) error: ${e.message}")
+                    null
+                }
+            }
+
+            val olDeferred = async {
+                try {
+                    val searchQuery = if (cleanAuthor != "Unknown Author") "$title $cleanAuthor" else title
+                    val response = openLibraryApiService.search(searchQuery)
+                    response.docs?.firstOrNull()?.let { doc ->
+                        Book(
+                            title = doc.title ?: title,
+                            author = doc.authorNames?.joinToString(", ") ?: cleanAuthor,
+                            coverUrl = doc.coverId?.let { OpenLibraryApiService.coverUrl(it, "L") },
+                            pageCount = doc.pageCount,
+                            publisher = doc.publishers?.firstOrNull(),
+                            publishedDate = doc.publishDates?.firstOrNull(),
+                            subjects = doc.subjects?.take(10)?.joinToString(", ")
+                        )
+                    }
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "OL(title-search) error: ${e.message}")
+                    null
+                }
+            }
+
+            val hcDeferred = async {
+                if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) return@async null
+                try {
+                    val response = hardcoverApiService.query(
+                        HardcoverApiService.buildTitleQuery(title)
+                    )
+                    val editions = response.data?.editions.orEmpty()
+                    val bestMatch = if (cleanAuthor != "Unknown Author") {
+                        val normalizedAuthor = cleanAuthor.lowercase().trim()
+                        editions.firstOrNull { edition ->
+                            edition.book?.contributions?.any { contrib ->
+                                contrib.author?.name?.lowercase()?.trim() == normalizedAuthor
+                            } == true
+                        } ?: editions.firstOrNull()
+                    } else {
+                        editions.firstOrNull()
+                    }
+                    bestMatch?.let { hardcoverEditionToBook(it) }
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "HC(title-search) error: ${e.message}")
+                    null
+                }
+            }
+
+            val amzDeferred = async {
+                try {
+                    amazonScraper.lookupByTitleAuthor(title, cleanAuthor, "")
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "AMZ(title-search) error: ${e.message}")
+                    null
+                }
+            }
+
+            val bnDeferred = async {
+                try {
+                    barnesNobleScraper.lookupByIsbn(title)
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "BN(title-search) error: ${e.message}")
+                    null
+                }
+            }
+
+            val gb = gbDeferred.await()
+            val ol = olDeferred.await()
+            val hc = hcDeferred.await()
+            val amz = amzDeferred.await()
+            val bn = bnDeferred.await()
+
+            diag.add(if (gb != null) "GB: ${gb.title}" else "GB: miss")
+            diag.add(if (ol != null) "OL: ${ol.title}" else "OL: miss")
+            diag.add(if (hc != null) "HC: ${hc.title}" else "HC: miss")
+            diag.add(if (amz != null) "AMZ: ${amz.title}" else "AMZ: miss")
+            diag.add(if (bn != null) "BN: ${bn.title}" else "BN: miss")
+
+            listOfNotNull(hc, ol, gb, amz, bn).forEach { results.add(it) }
+        }
+
+        if (results.isEmpty()) {
+            return LookupResult(null, diag.joinToString(" | "))
+        }
+
+        var merged = results.drop(1).fold(results.first()) { acc, book ->
+            mergeBooks(acc, book)
+        }
+        merged = merged.copy(title = cleanTitle(merged.title, merged.series))
+        if (merged.description != null) {
+            merged = merged.copy(description = cleanDescription(merged.description!!))
+        }
+
+        DebugLog.d(TAG, "Title search result: '${merged.title}' by '${merged.author}'")
+        return LookupResult(merged, diag.joinToString(" | "))
+    }
+
     private suspend fun doLookup(isbn: String, skipLocal: Boolean): LookupResult {
         DebugLog.d(TAG, "lookupByIsbn: $isbn (skipLocal=$skipLocal)")
         val diag = mutableListOf<String>()

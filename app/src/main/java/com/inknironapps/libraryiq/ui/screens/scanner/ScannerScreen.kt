@@ -20,18 +20,21 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +51,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -75,6 +79,10 @@ fun ScannerScreen(
         }
     }
 
+    // Bottom sheet state: starts partially expanded, user can drag to full screen
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val showSheet = !uiState.isScanning
+
     Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
         TopAppBar(
             title = {
@@ -91,19 +99,21 @@ fun ScannerScreen(
             }
         )
 
+        // Camera always visible
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            CameraPreviewWithScanner(
+                onBarcodeDetected = viewModel::onBarcodeDetected,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Aim bar overlay
+            ScannerOverlay(modifier = Modifier.fillMaxSize())
+        }
+
         if (uiState.isScanning) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                CameraPreviewWithScanner(
-                    onBarcodeDetected = viewModel::onBarcodeDetected,
-                    modifier = Modifier.fillMaxSize()
-                )
-                // Aim bar overlay
-                ScannerOverlay(modifier = Modifier.fillMaxSize())
-            }
             Text(
                 text = "Align barcode within the frame",
                 style = MaterialTheme.typography.bodyLarge,
@@ -112,53 +122,117 @@ fun ScannerScreen(
                     .padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        } else {
-            // Show lookup result
+        }
+    }
+
+    // Bottom sheet overlays the camera when a barcode is detected
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = viewModel::scanAgain,
+            sheetState = sheetState
+        ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (uiState.isLookingUp) {
+                    Spacer(modifier = Modifier.height(24.dp))
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Looking up ISBN: ${uiState.scannedIsbn}")
+                    Text(
+                        text = "Looking up ISBN: ${uiState.scannedIsbn}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
                 } else if (uiState.lookupResult != null) {
                     val book = uiState.lookupResult!!
 
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                    if (!book.coverUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = book.coverUrl,
+                            contentDescription = "Cover",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(width = 120.dp, height = 180.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Text(
+                        text = book.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = book.author,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    book.publisher?.let {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    book.series?.let { series ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val seriesText = if (book.seriesNumber != null) {
+                            "$series #${book.seriesNumber}"
+                        } else series
+                        Text(
+                            text = seriesText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Show additional details when expanded
+                    book.description?.let { desc ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 8
+                        )
+                    }
+
+                    if (book.pageCount != null || book.publishedDate != null || book.language != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (!book.coverUrl.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = book.coverUrl,
-                                    contentDescription = "Cover",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(width = 100.dp, height = 150.dp)
-                                        .clip(MaterialTheme.shapes.medium)
+                            book.pageCount?.let {
+                                Text(
+                                    text = "$it pages",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.height(12.dp))
                             }
-
-                            Text(
-                                text = book.title,
-                                style = MaterialTheme.typography.titleLarge
-                            )
-                            Text(
-                                text = book.author,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            book.publisher?.let {
+                            book.publishedDate?.let {
                                 Text(
                                     text = it,
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            book.language?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -166,33 +240,56 @@ fun ScannerScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = viewModel::scanAgain) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedButton(
+                            onClick = viewModel::scanAgain,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text("Scan Another")
                         }
-                        Button(onClick = viewModel::addToLibrary) {
+                        Button(
+                            onClick = viewModel::addToLibrary,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text("Add to Library")
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
                 } else if (uiState.error != null) {
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = uiState.error!!,
                         color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = viewModel::scanAgain) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedButton(
+                            onClick = viewModel::scanAgain,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text("Scan Again")
                         }
-                        Button(onClick = {
-                            navController.navigate(
-                                Screen.AddBook.createRoute(uiState.scannedIsbn)
-                            )
-                        }) {
+                        Button(
+                            onClick = {
+                                navController.navigate(
+                                    Screen.AddBook.createRoute(uiState.scannedIsbn)
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text("Add Manually")
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
