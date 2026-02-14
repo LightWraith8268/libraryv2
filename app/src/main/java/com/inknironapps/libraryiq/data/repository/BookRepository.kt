@@ -30,6 +30,17 @@ data class LookupResult(
     val diagnostics: String
 )
 
+data class SearchResult(
+    val title: String,
+    val author: String,
+    val isbn: String?,
+    val coverUrl: String?,
+    val publisher: String?,
+    val publishedDate: String?,
+    val pageCount: Int?,
+    val source: String
+)
+
 data class CoverOption(
     val source: String,
     val url: String
@@ -124,6 +135,92 @@ class BookRepository @Inject constructor(
      * Used when refreshing metadata for an already-saved book.
      */
     suspend fun lookupByIsbnSkipLocal(isbn: String): LookupResult = doLookup(isbn, skipLocal = true)
+
+    /**
+     * Searches for books by title and optional author across Google Books and Open Library.
+     * Returns a list of search results for the user to choose from.
+     * Used by the interactive "Add Book" search feature.
+     */
+    suspend fun searchByTitleAuthor(title: String, author: String?): List<SearchResult> {
+        DebugLog.d(TAG, "searchByTitleAuthor: '$title' by '${author ?: "any"}'")
+        val results = mutableListOf<SearchResult>()
+
+        coroutineScope {
+            val googleJob = async {
+                try {
+                    val query = if (!author.isNullOrBlank()) {
+                        "intitle:\"$title\" inauthor:\"$author\""
+                    } else {
+                        "intitle:\"$title\""
+                    }
+                    val response = bookApiService.searchByIsbn(query)
+                    response.items?.take(10)?.map { item ->
+                        val info = item.volumeInfo
+                        val isbn13 = info.industryIdentifiers
+                            ?.firstOrNull { it.type == "ISBN_13" }?.identifier
+                        val isbn10 = info.industryIdentifiers
+                            ?.firstOrNull { it.type == "ISBN_10" }?.identifier
+                        SearchResult(
+                            title = info.title ?: "Unknown Title",
+                            author = info.authors?.joinToString(", ") ?: "Unknown Author",
+                            isbn = isbn13 ?: isbn10,
+                            coverUrl = info.imageLinks?.getBestUrl(),
+                            publisher = info.publisher,
+                            publishedDate = info.publishedDate,
+                            pageCount = info.pageCount,
+                            source = "Google Books"
+                        )
+                    } ?: emptyList()
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "Search Google Books error: ${e.message}")
+                    emptyList()
+                }
+            }
+
+            val olJob = async {
+                try {
+                    val query = if (!author.isNullOrBlank()) {
+                        "$title $author"
+                    } else {
+                        title
+                    }
+                    val response = openLibraryApiService.searchByTitle(query)
+                    response.docs?.take(10)?.map { doc ->
+                        SearchResult(
+                            title = doc.title ?: "Unknown Title",
+                            author = doc.authorNames?.joinToString(", ") ?: "Unknown Author",
+                            isbn = doc.isbns?.firstOrNull { it.length == 13 }
+                                ?: doc.isbns?.firstOrNull(),
+                            coverUrl = doc.coverId?.let { OpenLibraryApiService.coverUrl(it, "M") },
+                            publisher = doc.publishers?.firstOrNull(),
+                            publishedDate = doc.publishDates?.firstOrNull(),
+                            pageCount = doc.pageCount,
+                            source = "Open Library"
+                        )
+                    } ?: emptyList()
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "Search Open Library error: ${e.message}")
+                    emptyList()
+                }
+            }
+
+            results.addAll(googleJob.await())
+            results.addAll(olJob.await())
+        }
+
+        // Deduplicate by ISBN (prefer Google Books which has richer data)
+        val seen = mutableSetOf<String>()
+        val deduped = mutableListOf<SearchResult>()
+        for (result in results) {
+            val key = result.isbn ?: "${result.title.lowercase()}|${result.author.lowercase()}"
+            if (seen.add(key)) {
+                deduped.add(result)
+            }
+        }
+
+        DebugLog.d(TAG, "searchByTitleAuthor: ${deduped.size} results (${results.size} before dedup)")
+        return deduped
+    }
 
     private suspend fun doLookup(isbn: String, skipLocal: Boolean): LookupResult {
         DebugLog.d(TAG, "lookupByIsbn: $isbn (skipLocal=$skipLocal)")

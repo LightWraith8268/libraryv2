@@ -22,6 +22,13 @@ interface OpenLibraryApiService {
         @Query("fields") fields: String = "key,title,author_name,publisher,publish_date,number_of_pages_median,cover_i,subject,language,edition_key"
     ): OpenLibrarySearchResponse
 
+    @GET("search.json")
+    suspend fun searchByTitle(
+        @Query("q") query: String,
+        @Query("fields") fields: String = "key,title,author_name,publisher,publish_date,number_of_pages_median,cover_i,subject,language,edition_key,isbn",
+        @Query("limit") limit: Int = 20
+    ): OpenLibrarySearchResponse
+
     companion object {
         const val BASE_URL = "https://openlibrary.org/"
         const val COVERS_BASE = "https://covers.openlibrary.org/b/id/"
@@ -77,5 +84,6 @@ data class OpenLibrarySearchDoc(
     @SerializedName("number_of_pages_median") val pageCount: Int?,
     @SerializedName("cover_i") val coverId: Long?,
     @SerializedName("subject") val subjects: List<String>?,
-    @SerializedName("language") val languages: List<String>?
+    @SerializedName("language") val languages: List<String>?,
+    @SerializedName("isbn") val isbns: List<String>?
 )

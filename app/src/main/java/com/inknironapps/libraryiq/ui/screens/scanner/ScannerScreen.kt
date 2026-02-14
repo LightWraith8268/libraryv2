@@ -174,6 +174,19 @@ fun ScannerScreen(
                             Text("Add to Library")
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Let the user search for a different edition via Add Book screen
+                    OutlinedButton(
+                        onClick = {
+                            navController.navigate(
+                                Screen.AddBook.createRoute(uiState.scannedIsbn)
+                            )
+                        }
+                    ) {
+                        Text("Wrong book? Search by title")
+                    }
                 } else if (uiState.error != null) {
                     Text(
                         text = uiState.error!!,
