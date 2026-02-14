@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.33] - 2026-02-14
+
+### Changed
+- Default library to Unread filter, sync Want to Buy to all users
+
 ## [1.8.32] - 2026-02-14
 
 ### Changed
