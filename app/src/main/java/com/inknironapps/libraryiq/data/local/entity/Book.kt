@@ -1,10 +1,19 @@
 package com.inknironapps.libraryiq.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
-@Entity(tableName = "books")
+@Entity(
+    tableName = "books",
+    indices = [
+        Index(value = ["isbn"]),
+        Index(value = ["title"]),
+        Index(value = ["author"]),
+        Index(value = ["series"])
+    ]
+)
 data class Book(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val title: String,

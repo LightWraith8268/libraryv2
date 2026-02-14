@@ -19,6 +19,8 @@ data class VolumeInfo(
     @SerializedName("publishedDate") val publishedDate: String?,
     @SerializedName("description") val description: String?,
     @SerializedName("pageCount") val pageCount: Int?,
+    @SerializedName("categories") val categories: List<String>?,
+    @SerializedName("language") val language: String?,
     @SerializedName("imageLinks") val imageLinks: ImageLinks?,
     @SerializedName("industryIdentifiers") val industryIdentifiers: List<IndustryIdentifier>?
 )

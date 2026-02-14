@@ -19,6 +19,7 @@ import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
 import com.inknironapps.libraryiq.data.remote.TargetScraper
 import com.inknironapps.libraryiq.util.DebugLog
+import java.util.Locale
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -143,54 +144,55 @@ class BookRepository @Inject constructor(
         } else null
         if (isbn10 != null) DebugLog.d(TAG, "ISBN-10 variant: $isbn10")
 
-        // 1. Google Books strict ISBN search
-        val googleBook = tryGoogleBooksIsbn(isbn)
+        // Fire all API/scraper calls in parallel for maximum speed.
+        // Each source is independent; we launch them all then await results.
+        val parallelResults = coroutineScope {
+            val gb = async { tryGoogleBooksIsbn(isbn) }
+            val ol = async { tryOpenLibrary(isbn) }
+            val hc = async { tryHardcover(isbn) }
+            val amz = async { tryAmazon(isbn) }
+            val bn = async { tryBarnesNoble(isbn) }
+            val tgt = async { tryTarget(isbn) }
+            arrayOf(gb.await(), ol.await(), hc.await(), amz.await(), bn.await(), tgt.await())
+        }
+        val googleBook = parallelResults[0]
+        val openLibraryBook = parallelResults[1]
+        val hardcoverBook = parallelResults[2]
+        val amazonBook = parallelResults[3]
+        val bnBook = parallelResults[4]
+        val targetBook = parallelResults[5]
+
         diag.add(if (googleBook != null) "GB(isbn): ${googleBook.title}" else "GB(isbn): miss")
 
-        // 2. Google Books general search (ISBN as plain text)
+        // Google Books fallbacks run sequentially only if strict ISBN missed
         val googleGeneralBook = if (googleBook == null) {
             tryGoogleBooksGeneral(isbn).also {
                 diag.add(if (it != null) "GB(general): ${it.title}" else "GB(general): miss")
             }
         } else null
 
-        // 3. Google Books ISBN-10 variant
         val googleIsbn10Book = if (googleBook == null && googleGeneralBook == null && isbn10 != null) {
             tryGoogleBooksIsbn(isbn10)?.copy(isbn = isbn).also {
                 diag.add(if (it != null) "GB(isbn10): ${it.title}" else "GB(isbn10): miss")
             }
         } else null
 
-        // 4. Open Library direct + search fallback
-        val openLibraryBook = tryOpenLibrary(isbn)
         diag.add(if (openLibraryBook != null) "OL: ${openLibraryBook.title}" else "OL: miss")
-
-        // 5. Hardcover
-        val hardcoverBook = tryHardcover(isbn)
         diag.add(if (hardcoverBook != null) "HC: ${hardcoverBook.title}" else
             if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) "HC: no token" else "HC: miss")
-
-        // 6. Amazon scraping (always try - best source for series, pages, descriptions)
-        val amazonBook = tryAmazon(isbn)
         diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
-
-        // 7. Barnes & Noble (direct ISBN lookup, excellent metadata)
-        val bnBook = tryBarnesNoble(isbn)
         diag.add(if (bnBook != null) "BN: ${bnBook.title}" else "BN: miss")
-
-        // 8. Target (Specifications section has comprehensive details)
-        val targetBook = tryTarget(isbn)
         diag.add(if (targetBook != null) "TGT: ${targetBook.title}" else "TGT: miss")
 
-        // 9. Amazon title+author fallback: if Amazon ISBN search missed but we have
+        // Amazon title+author fallback: if Amazon ISBN search missed but we have
         // title+author from other sources, retry Amazon with title+author search.
-        // This catches KDP/self-published books with Amazon-issued ISBNs that other
-        // sources found but Amazon's ISBN search didn't return directly.
         val amazonTitleBook = if (amazonBook == null) {
-            val knownTitle = bnBook?.title ?: targetBook?.title ?: hardcoverBook?.title
-                ?: openLibraryBook?.title ?: googleBook?.title ?: googleGeneralBook?.title
-            val knownAuthor = bnBook?.author ?: targetBook?.author ?: hardcoverBook?.author
-                ?: openLibraryBook?.author ?: googleBook?.author ?: googleGeneralBook?.author
+            val knownTitle = hardcoverBook?.title ?: openLibraryBook?.title
+                ?: googleBook?.title ?: googleGeneralBook?.title
+                ?: bnBook?.title ?: targetBook?.title
+            val knownAuthor = hardcoverBook?.author ?: openLibraryBook?.author
+                ?: googleBook?.author ?: googleGeneralBook?.author
+                ?: bnBook?.author ?: targetBook?.author
             if (knownTitle != null && knownTitle != "Unknown Title") {
                 tryAmazonByTitleAuthor(knownTitle, knownAuthor ?: "Unknown Author", isbn).also {
                     diag.add(if (it != null) "AMZ(title): ${it.title}" else "AMZ(title): miss")
@@ -389,8 +391,14 @@ class BookRepository @Inject constructor(
         return LookupResult(merged, diagStr)
     }
 
+    /** Recent lookup errors (capped at 50 to prevent unbounded growth). */
     var lastErrors = mutableListOf<String>()
         private set
+
+    private fun addError(msg: String) {
+        if (lastErrors.size >= 50) lastErrors.removeAt(0)
+        lastErrors.add(msg)
+    }
 
     /**
      * Checks if a book result is missing important metadata that
@@ -526,7 +534,7 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Google Books (isbn:) error: ${e.message}")
-            lastErrors.add("GB(isbn): ${e.javaClass.simpleName}: ${e.message}")
+            addError("GB(isbn): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -545,7 +553,7 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Google Books (general) error: ${e.message}")
-            lastErrors.add("GB(gen): ${e.javaClass.simpleName}: ${e.message}")
+            addError("GB(gen): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -558,7 +566,7 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Open Library (direct) error: ${e.message}")
-            lastErrors.add("OL(direct): ${e.javaClass.simpleName}: ${e.message}")
+            addError("OL(direct): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
 
@@ -582,7 +590,7 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Open Library (search) error: ${e.message}")
-            lastErrors.add("OL(search): ${e.javaClass.simpleName}: ${e.message}")
+            addError("OL(search): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -603,7 +611,7 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Hardcover error: ${e.message}")
-            lastErrors.add("HC: ${e.javaClass.simpleName}: ${e.message}")
+            addError("HC: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -624,7 +632,7 @@ class BookRepository @Inject constructor(
             throw e // Don't swallow cancellation
         } catch (e: Exception) {
             DebugLog.e(TAG, "Amazon scraper error: ${e.message}")
-            lastErrors.add("AMZ: ${e.javaClass.simpleName}: ${e.message}")
+            addError("AMZ: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -638,7 +646,7 @@ class BookRepository @Inject constructor(
             throw e
         } catch (e: Exception) {
             DebugLog.e(TAG, "Barnes & Noble error: ${e.message}")
-            lastErrors.add("BN: ${e.javaClass.simpleName}: ${e.message}")
+            addError("BN: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -652,7 +660,7 @@ class BookRepository @Inject constructor(
             throw e
         } catch (e: Exception) {
             DebugLog.e(TAG, "Target error: ${e.message}")
-            lastErrors.add("TGT: ${e.javaClass.simpleName}: ${e.message}")
+            addError("TGT: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -666,7 +674,7 @@ class BookRepository @Inject constructor(
             throw e
         } catch (e: Exception) {
             DebugLog.e(TAG, "Amazon title+author error: ${e.message}")
-            lastErrors.add("AMZ(title): ${e.javaClass.simpleName}: ${e.message}")
+            addError("AMZ(title): ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -845,7 +853,7 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Apple Books cover error: ${e.message}")
-            lastErrors.add("Apple: ${e.javaClass.simpleName}: ${e.message}")
+            addError("Apple: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -901,6 +909,11 @@ class BookRepository @Inject constructor(
         val isbn10 = info.industryIdentifiers
             ?.firstOrNull { it.type == "ISBN_10" }?.identifier
 
+        // Google Books language codes are ISO 639-1 (e.g. "en"); capitalize for display
+        val language = info.language?.let { code ->
+            Locale(code).displayLanguage.ifBlank { null }
+        }
+
         return Book(
             title = info.title ?: "Unknown Title",
             author = info.authors?.joinToString(", ") ?: "Unknown Author",
@@ -910,7 +923,9 @@ class BookRepository @Inject constructor(
             coverUrl = info.imageLinks?.getBestUrl(),
             pageCount = info.pageCount,
             publisher = info.publisher,
-            publishedDate = info.publishedDate
+            publishedDate = info.publishedDate,
+            subjects = info.categories?.joinToString(", "),
+            language = language
         )
     }
 

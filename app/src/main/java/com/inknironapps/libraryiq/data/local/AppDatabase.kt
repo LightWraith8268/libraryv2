@@ -43,13 +43,23 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Add indexes for faster search, filtering, and lookups
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_books_isbn ON books(isbn)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_books_title ON books(title)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_books_author ON books(author)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_books_series ON books(series)")
+    }
+}
+
 @Database(
     entities = [
         Book::class,
         Collection::class,
         BookCollectionCrossRef::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
