@@ -138,7 +138,8 @@ class BookRepository @Inject constructor(
     suspend fun lookupByIsbnSkipLocal(isbn: String): LookupResult = doLookup(isbn, skipLocal = true)
 
     /**
-     * Searches for books by title and optional author across Google Books and Open Library.
+     * Searches for books by title and optional author across all API-based sources:
+     * Google Books, Open Library, Hardcover, and iTunes/Apple Books.
      * Returns a list of search results for the user to choose from.
      * Used by the interactive "Add Book" search feature.
      */
@@ -147,6 +148,7 @@ class BookRepository @Inject constructor(
         val results = mutableListOf<SearchResult>()
 
         coroutineScope {
+            // 1. Google Books
             val googleJob = async {
                 try {
                     val query = if (!author.isNullOrBlank()) {
@@ -178,6 +180,7 @@ class BookRepository @Inject constructor(
                 }
             }
 
+            // 2. Open Library
             val olJob = async {
                 try {
                     val query = if (!author.isNullOrBlank()) {
@@ -205,15 +208,85 @@ class BookRepository @Inject constructor(
                 }
             }
 
+            // 3. Hardcover (best for series data)
+            val hardcoverJob = if (BuildConfig.HARDCOVER_API_TOKEN.isNotEmpty()) {
+                async {
+                    try {
+                        val response = hardcoverApiService.query(
+                            HardcoverApiService.buildTitleQuery(title)
+                        )
+                        val editions = response.data?.editions.orEmpty()
+                        // Filter by author if provided
+                        val filtered = if (!author.isNullOrBlank()) {
+                            val normalizedAuthor = author.lowercase().trim()
+                            val matched = editions.filter { edition ->
+                                edition.book?.contributions?.any { contrib ->
+                                    contrib.author?.name?.lowercase()?.trim()?.contains(normalizedAuthor) == true
+                                } == true
+                            }
+                            matched.ifEmpty { editions }
+                        } else {
+                            editions
+                        }
+                        filtered.take(10).mapNotNull { edition ->
+                            val bookTitle = edition.book?.title ?: edition.title ?: return@mapNotNull null
+                            val authorNames = edition.book?.contributions
+                                ?.mapNotNull { it.author?.name }
+                                ?.joinToString(", ")
+                                ?.ifBlank { null }
+                            SearchResult(
+                                title = bookTitle,
+                                author = authorNames ?: "Unknown Author",
+                                isbn = edition.isbn13 ?: edition.isbn10,
+                                coverUrl = edition.image?.url,
+                                publisher = edition.publisher?.name,
+                                publishedDate = edition.releaseDate,
+                                pageCount = edition.pages,
+                                source = "Hardcover"
+                            )
+                        }
+                    } catch (e: Exception) {
+                        DebugLog.e(TAG, "Search Hardcover error: ${e.message}")
+                        emptyList()
+                    }
+                }
+            } else null
+
+            // 4. iTunes / Apple Books
+            val itunesJob = async {
+                try {
+                    val searchTerm = if (!author.isNullOrBlank()) "$title $author" else title
+                    val response = iTunesApiService.searchEbooks(searchTerm, limit = 10)
+                    response.results?.mapNotNull { result ->
+                        val trackName = result.trackName ?: return@mapNotNull null
+                        SearchResult(
+                            title = trackName,
+                            author = result.artistName ?: "Unknown Author",
+                            isbn = null,
+                            coverUrl = result.getHighResCoverUrl(),
+                            publisher = null,
+                            publishedDate = result.releaseDate?.take(10),
+                            pageCount = null,
+                            source = "Apple Books"
+                        )
+                    } ?: emptyList()
+                } catch (e: Exception) {
+                    DebugLog.e(TAG, "Search iTunes error: ${e.message}")
+                    emptyList()
+                }
+            }
+
             results.addAll(googleJob.await())
             results.addAll(olJob.await())
+            hardcoverJob?.let { results.addAll(it.await()) }
+            results.addAll(itunesJob.await())
         }
 
-        // Deduplicate by ISBN (prefer Google Books which has richer data)
+        // Deduplicate by ISBN first, then by title+author for results without ISBN
         val seen = mutableSetOf<String>()
         val deduped = mutableListOf<SearchResult>()
         for (result in results) {
-            val key = result.isbn ?: "${result.title.lowercase()}|${result.author.lowercase()}"
+            val key = result.isbn ?: "${result.title.lowercase().trim()}|${result.author.lowercase().trim()}"
             if (seen.add(key)) {
                 deduped.add(result)
             }
