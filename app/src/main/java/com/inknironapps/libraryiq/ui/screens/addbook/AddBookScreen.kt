@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -160,7 +161,10 @@ fun AddBookScreen(
                     label = { Text("Title *") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Search
+                    ),
                     keyboardActions = KeyboardActions(
                         onSearch = { if (uiState.title.isNotBlank()) viewModel.searchBooks() }
                     )
@@ -172,7 +176,10 @@ fun AddBookScreen(
                     label = { Text("Author") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Search
+                    ),
                     keyboardActions = KeyboardActions(
                         onSearch = { if (uiState.title.isNotBlank()) viewModel.searchBooks() }
                     )
@@ -203,7 +210,10 @@ fun AddBookScreen(
                     onValueChange = viewModel::onDescriptionChange,
                     label = { Text("Description") },
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 4
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences
+                    )
                 )
 
                 Row(
@@ -232,7 +242,10 @@ fun AddBookScreen(
                     onValueChange = viewModel::onPublisherChange,
                     label = { Text("Publisher") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words
+                    )
                 )
 
                 // Series fields
@@ -245,7 +258,10 @@ fun AddBookScreen(
                         onValueChange = viewModel::onSeriesChange,
                         label = { Text("Series") },
                         modifier = Modifier.weight(2f),
-                        singleLine = true
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words
+                        )
                     )
                     OutlinedTextField(
                         value = uiState.seriesNumber,
@@ -262,7 +278,10 @@ fun AddBookScreen(
                     onValueChange = viewModel::onLanguageChange,
                     label = { Text("Language") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words
+                    )
                 )
 
                 // Reading status
@@ -321,7 +340,8 @@ private fun SearchResultsBottomSheet(
     onSelect: (SearchResult) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Allow partial → expanded dragging (starts half-screen, user can drag to full)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -329,7 +349,7 @@ private fun SearchResultsBottomSheet(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 16.dp)
         ) {
@@ -343,7 +363,7 @@ private fun SearchResultsBottomSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
+                        .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -356,7 +376,7 @@ private fun SearchResultsBottomSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
+                        .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -373,7 +393,7 @@ private fun SearchResultsBottomSheet(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     items(results) { result ->
