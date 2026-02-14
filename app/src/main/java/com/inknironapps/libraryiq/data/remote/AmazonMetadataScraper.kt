@@ -33,6 +33,8 @@ class AmazonMetadataScraper @Inject constructor() {
         // Desktop user agent gets more complete HTML than mobile
         private const val USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        // Pre-compiled regex for extracting links from HTML (used many times in genre extraction)
+        private val HTML_LINK_REGEX = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
     }
 
     private val client = OkHttpClient.Builder()
@@ -831,8 +833,7 @@ class AmazonMetadataScraper @Inject constructor() {
         // 1. Breadcrumbs from wayfinding-breadcrumbs section
         val breadcrumbSection = extractHtmlSection(html, "wayfinding-breadcrumbs", 2000)
         if (breadcrumbSection != null) {
-            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
-            for (match in linkRegex.findAll(breadcrumbSection)) {
+            for (match in HTML_LINK_REGEX.findAll(breadcrumbSection)) {
                 val cat = match.groupValues[1].trim()
                 if (isValidGenre(cat)) genres.add(cat)
             }
@@ -845,8 +846,7 @@ class AmazonMetadataScraper @Inject constructor() {
         for (match in bsrLadderRegex.findAll(html)) {
             val ladder = match.groupValues[1]
             // Extract all linked categories within each ladder
-            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
-            for (linkMatch in linkRegex.findAll(ladder)) {
+            for (linkMatch in HTML_LINK_REGEX.findAll(ladder)) {
                 val cat = linkMatch.groupValues[1].trim()
                 if (isValidGenre(cat)) genres.add(cat)
             }
@@ -871,8 +871,7 @@ class AmazonMetadataScraper @Inject constructor() {
         val salesRankIndex = html.indexOf("id=\"SalesRank\"")
         if (salesRankIndex >= 0) {
             val salesSection = html.substring(salesRankIndex, (salesRankIndex + 3000).coerceAtMost(html.length))
-            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
-            for (match in linkRegex.findAll(salesSection)) {
+            for (match in HTML_LINK_REGEX.findAll(salesSection)) {
                 val cat = match.groupValues[1].trim()
                 if (isValidGenre(cat)) genres.add(cat)
             }
@@ -882,8 +881,7 @@ class AmazonMetadataScraper @Inject constructor() {
         val breadcrumbListRegex = """<ul[^>]*class="[^"]*a-horizontal[^"]*"[^>]*>(.*?)</ul>"""
             .toRegex(RegexOption.DOT_MATCHES_ALL)
         for (match in breadcrumbListRegex.findAll(html)) {
-            val linkRegex = """<a[^>]*>\s*([^<]+?)\s*</a>""".toRegex()
-            for (linkMatch in linkRegex.findAll(match.groupValues[1])) {
+            for (linkMatch in HTML_LINK_REGEX.findAll(match.groupValues[1])) {
                 val cat = linkMatch.groupValues[1].trim()
                 if (isValidGenre(cat)) genres.add(cat)
             }
