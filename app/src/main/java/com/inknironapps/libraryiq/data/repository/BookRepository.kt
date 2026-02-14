@@ -91,6 +91,12 @@ class BookRepository @Inject constructor(
         bookDao.updateBook(updated)
         firestoreSync.pushUserStatus(updated)
 
+        // Want to Buy is a shared flag visible to all library members
+        firestoreSync.pushWantToBuyFlag(
+            book.id,
+            updated.readingStatus == ReadingStatus.WANT_TO_BUY
+        )
+
         // Auto-manage "Want to Buy" collection membership
         try {
             val wantToBuy = collectionDao.getCollectionByName("Want to Buy")

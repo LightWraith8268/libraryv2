@@ -270,6 +270,19 @@ class FirestoreSync @Inject constructor(
         }
     }
 
+    /**
+     * Syncs the Want to Buy flag to the shared book document so all library
+     * members can see it. Called whenever a user changes their reading status.
+     */
+    suspend fun pushWantToBuyFlag(bookId: String, wantToBuy: Boolean) {
+        if (!isSyncEnabled) return
+        try {
+            libraryBooksRef().document(bookId)
+                .set(mapOf("wantToBuy" to wantToBuy), SetOptions.merge()).await()
+        } catch (_: Exception) {
+        }
+    }
+
     suspend fun pushCollection(collection: Collection) {
         if (!isSyncEnabled) return
         try {
@@ -376,17 +389,30 @@ class FirestoreSync @Inject constructor(
                         DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
                             val data = change.document.data
                             val sharedBook = mapToSharedBook(change.document.id, data) ?: continue
+                            val wantToBuy = data["wantToBuy"] as? Boolean ?: false
                             val existing = bookDao.getBookByIdDirect(change.document.id)
                             val merged = if (existing != null) {
+                                // Want to Buy is a shared flag: if set, override per-user status;
+                                // if cleared, keep the user's own status
+                                val effectiveStatus = if (wantToBuy) {
+                                    ReadingStatus.WANT_TO_BUY
+                                } else {
+                                    existing.readingStatus
+                                }
                                 sharedBook.copy(
-                                    readingStatus = existing.readingStatus,
+                                    readingStatus = effectiveStatus,
                                     rating = existing.rating,
                                     dateStarted = existing.dateStarted,
                                     dateFinished = existing.dateFinished,
                                     currentPage = existing.currentPage
                                 )
                             } else {
-                                sharedBook
+                                // New book from another user — apply wantToBuy flag
+                                if (wantToBuy) {
+                                    sharedBook.copy(readingStatus = ReadingStatus.WANT_TO_BUY)
+                                } else {
+                                    sharedBook
+                                }
                             }
                             bookDao.insertBook(merged)
                         }
@@ -480,10 +506,16 @@ class FirestoreSync @Inject constructor(
                 val data = doc.data ?: continue
                 remoteBookIds.add(doc.id)
                 val sharedBook = mapToSharedBook(doc.id, data) ?: continue
+                val wantToBuy = data["wantToBuy"] as? Boolean ?: false
                 val existing = bookDao.getBookByIdDirect(doc.id)
                 val merged = if (existing != null) {
+                    val effectiveStatus = if (wantToBuy) {
+                        ReadingStatus.WANT_TO_BUY
+                    } else {
+                        existing.readingStatus
+                    }
                     sharedBook.copy(
-                        readingStatus = existing.readingStatus,
+                        readingStatus = effectiveStatus,
                         rating = existing.rating,
                         dateStarted = existing.dateStarted,
                         dateFinished = existing.dateFinished,
@@ -491,7 +523,8 @@ class FirestoreSync @Inject constructor(
                     )
                 } else {
                     changes++
-                    sharedBook
+                    if (wantToBuy) sharedBook.copy(readingStatus = ReadingStatus.WANT_TO_BUY)
+                    else sharedBook
                 }
                 bookDao.insertBook(merged)
             }
@@ -588,7 +621,9 @@ class FirestoreSync @Inject constructor(
         "hardcoverId" to book.hardcoverId,
         "edition" to book.edition,
         "originalTitle" to book.originalTitle,
-        "originalLanguage" to book.originalLanguage
+        "originalLanguage" to book.originalLanguage,
+        // Want to Buy is shared across all library members
+        "wantToBuy" to (book.readingStatus == ReadingStatus.WANT_TO_BUY)
     )
 
     /** Per-user fields (private to each library member). */

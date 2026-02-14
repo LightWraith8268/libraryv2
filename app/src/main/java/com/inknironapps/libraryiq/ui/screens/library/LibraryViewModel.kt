@@ -49,7 +49,7 @@ class LibraryViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _selectedFilter = MutableStateFlow<ReadingStatus?>(null)
+    private val _selectedFilter = MutableStateFlow<ReadingStatus?>(ReadingStatus.UNREAD)
     val selectedFilter: StateFlow<ReadingStatus?> = _selectedFilter.asStateFlow()
 
     private val _sortOption = MutableStateFlow(libraryPreferences.defaultSort)
