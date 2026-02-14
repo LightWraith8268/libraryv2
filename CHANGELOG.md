@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.30] - 2026-02-14
+
+### Changed
+- Parallelize API lookups, add DB indexes, and improve metadata extraction
+
 ## [1.8.29] - 2026-02-13
 
 ### Changed
