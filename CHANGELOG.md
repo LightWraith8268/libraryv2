@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.32] - 2026-02-14
+
+### Changed
+- Search all sources, auto-capitalize form fields, full-screen bottom sheet
+
 ## [1.8.31] - 2026-02-14
 
 ### Added
