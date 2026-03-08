@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.37] - 2026-03-08
+
+### Fixed
+- Fix wrong cover from title-based enrichment
+
 ## [1.8.36] - 2026-03-08
 
 ### Changed
