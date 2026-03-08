@@ -4,6 +4,14 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.40] - 2026-03-08
+
+### Added
+- Implement tiered cover assignment and improve cover sources
+
+### Changed
+- Improve cover reliability across the app
+
 ## [1.8.39] - 2026-03-08
 
 ### Changed
