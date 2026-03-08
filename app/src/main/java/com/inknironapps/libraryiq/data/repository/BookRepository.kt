@@ -420,13 +420,17 @@ class BookRepository @Inject constructor(
 
         // 7. Title-based enrichment: search by title+author for additional metadata
         // (especially series info). Save edition-specific fields first because title
-        // searches may return a different edition (e.g. paperback instead of hardcover).
+        // searches may return a different edition (e.g. paperback instead of hardcover)
+        // or even a completely different book with the same title.
         val isbnPageCount = merged.pageCount?.takeIf { it > 0 }
         val isbnPublishedDate = merged.publishedDate
+        val isbnCoverUrl = merged.coverUrl
         DebugLog.d(TAG, "Enriching by title: '${merged.title}' by '${merged.author}'")
         val titleSources = searchByTitle(merged.title, merged.author, isbn)
         for (enrichment in titleSources) {
-            merged = mergeBooks(merged, enrichment)
+            // Strip cover from title-based results — they search by title, not ISBN,
+            // so the cover can belong to a completely different book or edition.
+            merged = mergeBooks(merged, enrichment.copy(coverUrl = null))
         }
         // Restore edition-specific fields from ISBN-based sources — title searches
         // can't distinguish editions, so their pageCount/publishedDate may be wrong.
