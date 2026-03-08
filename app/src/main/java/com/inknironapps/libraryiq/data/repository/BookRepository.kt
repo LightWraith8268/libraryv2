@@ -391,7 +391,32 @@ class BookRepository @Inject constructor(
             return LookupResult(null, diagStr)
         }
 
-        var merged = isbnSources.drop(1).fold(isbnSources.first()) { acc, book ->
+        // Get the consensus title from API sources (trusted, ISBN-validated) to
+        // detect when scrapers returned a completely different book.
+        val apiSources = listOfNotNull(
+            hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
+        )
+        val apiTitle = apiSources
+            .map { it.title }
+            .firstOrNull { it != "Unknown Title" }
+            ?.lowercase()?.trim()
+
+        // Strip covers from scraper results whose title doesn't match the API
+        // consensus. Scrapers do keyword searches and can return a completely
+        // different book (different title and author).
+        val sanitizedSources = isbnSources.map { book ->
+            val isScraper = book === amazonBook || book === amazonTitleBook ||
+                book === bnBook || book === targetBook
+            if (isScraper && apiTitle != null && book.coverUrl != null) {
+                val scraperTitle = book.title.lowercase().trim()
+                if (scraperTitle != apiTitle && !scraperTitle.contains(apiTitle) && !apiTitle.contains(scraperTitle)) {
+                    DebugLog.d(TAG, "Stripping cover from mismatched scraper: '${book.title}' vs API '$apiTitle'")
+                    book.copy(coverUrl = null)
+                } else book
+            } else book
+        }
+
+        var merged = sanitizedSources.drop(1).fold(sanitizedSources.first()) { acc, book ->
             mergeBooks(acc, book)
         }
 
