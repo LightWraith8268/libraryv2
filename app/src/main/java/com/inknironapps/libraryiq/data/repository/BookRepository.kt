@@ -19,10 +19,14 @@ import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
 import com.inknironapps.libraryiq.data.remote.TargetScraper
 import com.inknironapps.libraryiq.util.DebugLog
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -562,7 +566,16 @@ class BookRepository @Inject constructor(
             }
         }
 
-        // 8. Apple Books cover (fallback only - high quality but can't filter by edition)
+        // 8. Validate that the cover URL points to a real image (not a
+        // placeholder). Open Library returns a 1x1 pixel transparent GIF for
+        // missing covers; other sources can return dead URLs.
+        if (merged.coverUrl != null && !isValidCoverUrl(merged.coverUrl!!)) {
+            DebugLog.d(TAG, "Cover URL invalid/placeholder, discarding: ${merged.coverUrl}")
+            diag.add("cover-validate: rejected")
+            merged = merged.copy(coverUrl = null)
+        }
+
+        // 9. Apple Books cover (fallback only - high quality but can't filter by edition)
         // Only use Apple Books cover if no ISBN-based source provided one, because
         // Apple Books searches by title+author and may return a different edition's cover
         // (e.g. paperback cover instead of deluxe hardcover).
@@ -1060,6 +1073,33 @@ class BookRepository @Inject constructor(
             DebugLog.e(TAG, "Apple Books cover error: ${e.message}")
             addError("Apple: ${e.javaClass.simpleName}: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Validates that a cover URL points to a real image (not a placeholder).
+     * Open Library returns a tiny 1x1 pixel transparent GIF (43 bytes) for
+     * missing covers instead of a 404. This catches that and similar cases.
+     */
+    private suspend fun isValidCoverUrl(url: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "HEAD"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.instanceFollowRedirects = true
+            try {
+                val code = connection.responseCode
+                val contentLength = connection.contentLengthLong
+                val contentType = connection.contentType ?: ""
+                // Reject non-200, non-image, or tiny placeholder images (< 1KB)
+                code == 200 && contentType.startsWith("image") && contentLength > 1000
+            } finally {
+                connection.disconnect()
+            }
+        } catch (e: Exception) {
+            DebugLog.d(TAG, "Cover validation failed for $url: ${e.message}")
+            false
         }
     }
 

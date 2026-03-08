@@ -30,8 +30,13 @@ data class ImageLinks(
     @SerializedName("thumbnail") val thumbnail: String?
 ) {
     fun getBestUrl(): String? {
-        // Google Books returns http URLs; upgrade to https
-        return (thumbnail ?: smallThumbnail)?.replace("http://", "https://")
+        // Google Books returns http URLs; upgrade to https.
+        // Also request higher resolution by setting zoom=0 (full size)
+        // and removing edge-curl effect.
+        return (thumbnail ?: smallThumbnail)
+            ?.replace("http://", "https://")
+            ?.replace("&zoom=1", "&zoom=0")
+            ?.replace("&edge=curl", "")
     }
 }
 

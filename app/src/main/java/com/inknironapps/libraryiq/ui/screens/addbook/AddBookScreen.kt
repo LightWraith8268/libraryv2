@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.data.repository.SearchResult
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
@@ -144,7 +144,7 @@ fun AddBookScreen(
 
                 // Cover preview
                 if (uiState.coverUrl.isNotBlank()) {
-                    AsyncImage(
+                    SubcomposeAsyncImage(
                         model = uiState.coverUrl,
                         contentDescription = "Book cover",
                         modifier = Modifier
@@ -429,7 +429,7 @@ private fun SearchResultItem(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (result.coverUrl != null) {
-                AsyncImage(
+                SubcomposeAsyncImage(
                     model = result.coverUrl,
                     contentDescription = "Cover",
                     contentScale = ContentScale.Crop,

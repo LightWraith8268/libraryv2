@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.StarHalf
@@ -64,7 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.components.CoverPickerDialog
 import com.inknironapps.libraryiq.ui.components.ReadingStatusChip
@@ -150,14 +151,33 @@ fun BookDetailScreen(
                 // --- Cover and basic info ---
                 Row(modifier = Modifier.fillMaxWidth()) {
                     if (!book.coverUrl.isNullOrBlank()) {
-                        AsyncImage(
+                        SubcomposeAsyncImage(
                             model = book.coverUrl,
                             contentDescription = "Cover - tap to change",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(width = 120.dp, height = 180.dp)
                                 .clip(MaterialTheme.shapes.medium)
-                                .clickable { viewModel.openCoverPicker() }
+                                .clickable { viewModel.openCoverPicker() },
+                            error = {
+                                Card(
+                                    modifier = Modifier
+                                        .size(width = 120.dp, height = 180.dp)
+                                        .clickable { viewModel.openCoverPicker() },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.MenuBook,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                    }
+                                }
+                            }
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                     } else {
