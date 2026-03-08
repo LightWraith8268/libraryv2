@@ -57,6 +57,10 @@ data class OpenLibraryEdition(
     @SerializedName("series") val series: List<String>?,
     @SerializedName("languages") val languages: List<OpenLibraryRef>?,
     @SerializedName("physical_format") val physicalFormat: String?,
+    @SerializedName("edition_name") val editionName: String?,
+    @SerializedName("genres") val genres: List<String>?,
+    @SerializedName("dewey_decimal_class") val deweyDecimalClass: List<String>?,
+    @SerializedName("lc_classifications") val lcClassifications: List<String>?,
     @SerializedName("works") val works: List<OpenLibraryRef>?
 )
 

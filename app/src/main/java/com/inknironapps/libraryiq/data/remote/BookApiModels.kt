@@ -14,6 +14,7 @@ data class GoogleBookItem(
 
 data class VolumeInfo(
     @SerializedName("title") val title: String?,
+    @SerializedName("subtitle") val subtitle: String?,
     @SerializedName("authors") val authors: List<String>?,
     @SerializedName("publisher") val publisher: String?,
     @SerializedName("publishedDate") val publishedDate: String?,
@@ -22,7 +23,20 @@ data class VolumeInfo(
     @SerializedName("categories") val categories: List<String>?,
     @SerializedName("language") val language: String?,
     @SerializedName("imageLinks") val imageLinks: ImageLinks?,
-    @SerializedName("industryIdentifiers") val industryIdentifiers: List<IndustryIdentifier>?
+    @SerializedName("industryIdentifiers") val industryIdentifiers: List<IndustryIdentifier>?,
+    @SerializedName("seriesInfo") val seriesInfo: SeriesInfo?
+)
+
+data class SeriesInfo(
+    @SerializedName("bookDisplayNumber") val bookDisplayNumber: String?,
+    @SerializedName("volumeSeries") val volumeSeries: List<VolumeSeries>?
+)
+
+data class VolumeSeries(
+    @SerializedName("seriesId") val seriesId: String?,
+    @SerializedName("seriesBookType") val seriesBookType: String?,
+    @SerializedName("orderNumber") val orderNumber: Int?,
+    @SerializedName("issue") val issue: String?
 )
 
 data class ImageLinks(

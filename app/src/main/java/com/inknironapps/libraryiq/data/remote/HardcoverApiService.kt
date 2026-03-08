@@ -20,6 +20,7 @@ interface HardcoverApiService {
                         isbn_10
                         pages
                         title
+                        edition_format
                         image {
                             url
                         }
@@ -27,6 +28,7 @@ interface HardcoverApiService {
                         book {
                             title
                             description
+                            cached_tags
                             contributions(limit: 5) {
                                 author {
                                     name
@@ -63,6 +65,7 @@ interface HardcoverApiService {
                         isbn_10
                         pages
                         title
+                        edition_format
                         image {
                             url
                         }
@@ -70,6 +73,7 @@ interface HardcoverApiService {
                         book {
                             title
                             description
+                            cached_tags
                             contributions(limit: 5) {
                                 author {
                                     name
@@ -130,6 +134,7 @@ data class HardcoverEdition(
     @SerializedName("isbn_10") val isbn10: String?,
     @SerializedName("pages") val pages: Int?,
     @SerializedName("title") val title: String?,
+    @SerializedName("edition_format") val editionFormat: String?,
     @SerializedName("image") val image: HardcoverImage?,
     @SerializedName("release_date") val releaseDate: String?,
     @SerializedName("book") val book: HardcoverBook?,
@@ -143,6 +148,7 @@ data class HardcoverImage(
 data class HardcoverBook(
     @SerializedName("title") val title: String?,
     @SerializedName("description") val description: String?,
+    @SerializedName("cached_tags") val cachedTags: List<String>?,
     @SerializedName("contributions") val contributions: List<HardcoverContribution>?,
     @SerializedName("book_series") val bookSeries: List<HardcoverBookSeries>?
 )

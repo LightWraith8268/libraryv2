@@ -17,6 +17,7 @@ import com.inknironapps.libraryiq.data.remote.HardcoverEdition
 import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
+import com.inknironapps.libraryiq.data.remote.PrhApiService
 import com.inknironapps.libraryiq.data.remote.TargetScraper
 import com.inknironapps.libraryiq.util.DebugLog
 import java.net.HttpURLConnection
@@ -62,6 +63,7 @@ class BookRepository @Inject constructor(
     private val barnesNobleScraper: BarnesNobleScraper,
     private val targetScraper: TargetScraper,
     private val iTunesApiService: ITunesApiService,
+    private val prhApiService: PrhApiService,
     private val firestoreSync: FirestoreSync
 ) {
     fun getAllBooks(): Flow<List<Book>> = bookDao.getAllBooks()
@@ -330,17 +332,19 @@ class BookRepository @Inject constructor(
             val gb = async { tryGoogleBooksIsbn(isbn) }
             val ol = async { tryOpenLibrary(isbn) }
             val hc = async { tryHardcover(isbn) }
+            val prh = async { tryPrh(isbn) }
             val amz = async { tryAmazon(isbn) }
             val bn = async { tryBarnesNoble(isbn) }
             val tgt = async { tryTarget(isbn) }
-            arrayOf(gb.await(), ol.await(), hc.await(), amz.await(), bn.await(), tgt.await())
+            arrayOf(gb.await(), ol.await(), hc.await(), prh.await(), amz.await(), bn.await(), tgt.await())
         }
         val googleBook = parallelResults[0]
         val openLibraryBook = parallelResults[1]
         val hardcoverBook = parallelResults[2]
-        val amazonBook = parallelResults[3]
-        val bnBook = parallelResults[4]
-        val targetBook = parallelResults[5]
+        val prhBook = parallelResults[3]
+        val amazonBook = parallelResults[4]
+        val bnBook = parallelResults[5]
+        val targetBook = parallelResults[6]
 
         diag.add(if (googleBook != null) "GB(isbn): ${googleBook.title}" else "GB(isbn): miss")
 
@@ -360,6 +364,7 @@ class BookRepository @Inject constructor(
         diag.add(if (openLibraryBook != null) "OL: ${openLibraryBook.title}" else "OL: miss")
         diag.add(if (hardcoverBook != null) "HC: ${hardcoverBook.title}" else
             if (BuildConfig.HARDCOVER_API_TOKEN.isEmpty()) "HC: no token" else "HC: miss")
+        diag.add(if (prhBook != null) "PRH: ${prhBook.title}" else "PRH: miss")
         diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
         diag.add(if (bnBook != null) "BN: ${bnBook.title}" else "BN: miss")
         diag.add(if (targetBook != null) "TGT: ${targetBook.title}" else "TGT: miss")
@@ -386,7 +391,7 @@ class BookRepository @Inject constructor(
         // "first non-null wins" fields like coverUrl, language, format.
         val isbnSources = listOfNotNull(
             hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book,
-            amazonBook, amazonTitleBook, bnBook, targetBook
+            prhBook, amazonBook, amazonTitleBook, bnBook, targetBook
         )
 
         if (isbnSources.isEmpty()) {
@@ -400,7 +405,7 @@ class BookRepository @Inject constructor(
         // source had a cover AND the scraper's title matches. Target/title
         // searches (Tier 3) never auto-assign covers.
         val apiSources = listOfNotNull(
-            hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
+            hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book, prhBook
         )
         val apiTitle = apiSources
             .map { it.title }
@@ -610,6 +615,7 @@ class BookRepository @Inject constructor(
         if (googleBook != null || googleGeneralBook != null || googleIsbn10Book != null) sources.add("Google Books")
         if (openLibraryBook != null) sources.add("Open Library")
         if (hardcoverBook != null) sources.add("Hardcover")
+        if (prhBook != null) sources.add("Penguin Random House")
         if (amazonBook != null || amazonTitleBook != null) sources.add("Amazon")
         if (bnBook != null) sources.add("Barnes & Noble")
         if (targetBook != null) sources.add("Target")
@@ -758,11 +764,22 @@ class BookRepository @Inject constructor(
             // Google Books can return a completely wrong book for an isbn: query due to
             // metadata errors in their database.
             val isbn10 = if (isbn.length == 13 && isbn.startsWith("978")) convertIsbn13ToIsbn10(isbn) else null
-            response.items?.firstOrNull { item ->
+            val matchedItem = response.items?.firstOrNull { item ->
                 val ids = item.volumeInfo.industryIdentifiers?.map { it.identifier } ?: emptyList()
                 ids.contains(isbn) || (isbn10 != null && ids.contains(isbn10))
-            }?.let { googleBookToBook(it, isbn) }.also {
-                DebugLog.d(TAG, "Google Books (isbn:$isbn): ${it?.title ?: "not found"}")
+            } ?: return null
+
+            // Two-step lookup: fetch the full volume by ID for more complete data
+            // (higher-res images, seriesInfo, full description)
+            val fullItem = try {
+                bookApiService.getVolume(matchedItem.id)
+            } catch (e: Exception) {
+                DebugLog.d(TAG, "Google Books full volume fetch failed, using search result: ${e.message}")
+                matchedItem
+            }
+
+            googleBookToBook(fullItem, isbn).also {
+                DebugLog.d(TAG, "Google Books (isbn:$isbn): ${it.title}")
             }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Google Books (isbn:) error: ${e.message}")
@@ -907,6 +924,36 @@ class BookRepository @Inject constructor(
         } catch (e: Exception) {
             DebugLog.e(TAG, "Amazon title+author error: ${e.message}")
             addError("AMZ(title): ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryPrh(isbn: String): Book? {
+        return try {
+            val title = prhApiService.getByIsbn(isbn)
+            if (title.titleweb.isNullOrBlank()) return null
+            val pages = title.pages?.toIntOrNull()
+            // PRH flapcopy is the highest quality description available
+            val description = title.flapcopy?.trim()?.ifBlank { null }
+            // BISAC subject categories (industry standard)
+            val subjects = title.subjectcategorydescription?.trim()?.ifBlank { null }
+            Book(
+                title = title.titleweb ?: "Unknown Title",
+                author = title.authorweb ?: title.author ?: "Unknown Author",
+                isbn = title.isbn13 ?: isbn,
+                isbn10 = title.isbn10,
+                description = description,
+                pageCount = pages,
+                publisher = title.imprint ?: "Penguin Random House",
+                publishedDate = title.onsaledate,
+                format = title.formatname,
+                subjects = subjects,
+                genre = title.subjectcategorydescription
+            ).also {
+                DebugLog.d(TAG, "PRH: '${it.title}' by ${it.author}, format=${title.formatname}")
+            }
+        } catch (e: Exception) {
+            DebugLog.d(TAG, "PRH: miss (${e.javaClass.simpleName})")
             null
         }
     }
@@ -1193,8 +1240,20 @@ class BookRepository @Inject constructor(
             Locale(code).displayLanguage.ifBlank { null }
         }
 
+        // Build title with subtitle if available
+        val fullTitle = if (!info.subtitle.isNullOrBlank() && info.title != null) {
+            "${info.title}: ${info.subtitle}"
+        } else {
+            info.title ?: "Unknown Title"
+        }
+
+        // Extract series info from Google Books seriesInfo field
+        val seriesNumber = info.seriesInfo?.bookDisplayNumber
+        // Google Books doesn't provide series name directly in seriesInfo,
+        // but the bookDisplayNumber tells us it IS part of a series
+
         return Book(
-            title = info.title ?: "Unknown Title",
+            title = fullTitle,
             author = info.authors?.joinToString(", ") ?: "Unknown Author",
             isbn = isbn13 ?: isbn10,
             isbn10 = isbn10,
@@ -1204,7 +1263,8 @@ class BookRepository @Inject constructor(
             publisher = info.publisher,
             publishedDate = info.publishedDate,
             subjects = info.categories?.joinToString(", "),
-            language = language
+            language = language,
+            seriesNumber = seriesNumber
         )
     }
 
@@ -1245,6 +1305,12 @@ class BookRepository @Inject constructor(
             ?.replace("/languages/", "")
             ?.uppercase()
 
+        // Combine genres with subjects for richer genre data
+        val genreList = (edition.genres.orEmpty() + subjects.orEmpty()).distinct()
+
+        // Build edition info from edition_name field
+        val editionInfo = edition.editionName?.trim()?.ifBlank { null }
+
         return Book(
             title = edition.title ?: "Unknown Title",
             author = authorNames.joinToString(", ").ifBlank { "Unknown Author" },
@@ -1258,7 +1324,8 @@ class BookRepository @Inject constructor(
             series = edition.series?.firstOrNull()?.trim()?.ifBlank { null },
             language = language,
             format = edition.physicalFormat,
-            subjects = subjects?.take(10)?.joinToString(", ")
+            subjects = genreList.take(10).joinToString(", ").ifBlank { null },
+            edition = editionInfo
         )
     }
 
@@ -1276,6 +1343,9 @@ class BookRepository @Inject constructor(
             if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
         }
 
+        // Use cached_tags for genre/tags enrichment
+        val tags = edition.book?.cachedTags?.joinToString(", ")?.ifBlank { null }
+
         return Book(
             title = edition.book?.title ?: edition.title ?: "Unknown Title",
             author = authorNames.joinToString(", ").ifBlank { "Unknown Author" },
@@ -1287,7 +1357,9 @@ class BookRepository @Inject constructor(
             publisher = edition.publisher?.name,
             publishedDate = edition.releaseDate,
             series = seriesName,
-            seriesNumber = seriesNumber
+            seriesNumber = seriesNumber,
+            format = edition.editionFormat,
+            tags = tags
         )
     }
 
@@ -1396,6 +1468,7 @@ class BookRepository @Inject constructor(
             goodreadsId = primary.goodreadsId ?: secondary.goodreadsId,
             openLibraryId = primary.openLibraryId ?: secondary.openLibraryId,
             hardcoverId = primary.hardcoverId ?: secondary.hardcoverId,
+            tags = longerOf(primary.tags, secondary.tags),
             edition = primary.edition ?: secondary.edition,
             originalTitle = primary.originalTitle ?: secondary.originalTitle,
             originalLanguage = primary.originalLanguage ?: secondary.originalLanguage,

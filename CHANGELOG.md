@@ -4,6 +4,23 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.34] - 2026-03-07
+
+### Added
+- Penguin Random House API integration (free, no key) — best-in-class descriptions via `flapcopy`, BISAC genre codes, format info, and imprint data for ~25% of English-language books
+- Google Books `seriesInfo` parsing — free series number data for ~40% of series books
+- Google Books `subtitle` field — cleaner "Title: Subtitle" display
+- Google Books two-step volume lookup — fetches full volume details by ID for higher-res images, complete metadata, and series info
+- iTunes/Apple Books `genres[]` field parsing for better genre data
+- Hardcover `edition_format` field for physical format detection (Hardcover, Paperback, etc.)
+- Hardcover `cached_tags` field for user-generated genre/mood tags
+- Open Library `edition_name`, `genres[]`, `dewey_decimal_class[]`, `lc_classifications[]` fields for richer edition and classification data
+- Comprehensive book metadata API research document (20+ sources analyzed)
+
+### Changed
+- Metadata lookup now queries 13 sources in parallel (was 12) — added Penguin Random House
+- Bulk library metadata refresh now also updates tags and metadata sources fields
+
 ## [1.8.33] - 2026-02-14
 
 ### Changed
