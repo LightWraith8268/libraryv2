@@ -1,16 +1,20 @@
 package com.inknironapps.libraryiq.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -24,7 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.inknironapps.libraryiq.data.local.entity.Book
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.theme.StatusRead
@@ -55,16 +59,30 @@ fun BookCard(
         ) {
             // Cover image
             if (showCover) {
-                AsyncImage(
+                val coverWidth = if (compact) 40.dp else 60.dp
+                val coverHeight = if (compact) 60.dp else 90.dp
+                SubcomposeAsyncImage(
                     model = book.coverUrl,
                     contentDescription = "Cover of ${book.title}",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(
-                            width = if (compact) 40.dp else 60.dp,
-                            height = if (compact) 60.dp else 90.dp
-                        )
-                        .clip(MaterialTheme.shapes.small)
+                        .size(width = coverWidth, height = coverHeight)
+                        .clip(MaterialTheme.shapes.small),
+                    error = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.MenuBook,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.size(if (compact) 16.dp else 24.dp)
+                            )
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))

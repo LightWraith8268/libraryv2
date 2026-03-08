@@ -67,7 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.inknironapps.libraryiq.data.local.entity.Book
 import com.inknironapps.libraryiq.data.local.entity.ReadingStatus
 import com.inknironapps.libraryiq.ui.components.displayName
@@ -368,7 +368,7 @@ private fun SpinResultDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (book.coverUrl != null) {
-                    AsyncImage(
+                    SubcomposeAsyncImage(
                         model = book.coverUrl,
                         contentDescription = "Cover",
                         contentScale = ContentScale.Crop,
@@ -692,7 +692,7 @@ private fun BookSelectorDialog(
                             },
                             leadingContent = {
                                 if (book.coverUrl != null) {
-                                    AsyncImage(
+                                    SubcomposeAsyncImage(
                                         model = book.coverUrl,
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,

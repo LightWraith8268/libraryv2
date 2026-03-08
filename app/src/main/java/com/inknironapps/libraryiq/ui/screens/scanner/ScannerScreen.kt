@@ -65,7 +65,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.inknironapps.libraryiq.ui.navigation.Screen
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -194,7 +194,7 @@ fun ScannerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             if (!book.coverUrl.isNullOrBlank()) {
-                                AsyncImage(
+                                SubcomposeAsyncImage(
                                     model = book.coverUrl,
                                     contentDescription = "Cover",
                                     contentScale = ContentScale.Crop,
