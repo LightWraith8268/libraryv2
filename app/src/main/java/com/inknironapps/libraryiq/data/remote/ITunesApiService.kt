@@ -13,6 +13,12 @@ interface ITunesApiService {
         const val BASE_URL = "https://itunes.apple.com/"
     }
 
+    /** Direct ISBN lookup — returns exact match, no search ambiguity. */
+    @GET("lookup")
+    suspend fun lookupByIsbn(
+        @Query("isbn") isbn: String
+    ): ITunesSearchResponse
+
     @GET("search")
     suspend fun searchEbooks(
         @Query("term") term: String,
