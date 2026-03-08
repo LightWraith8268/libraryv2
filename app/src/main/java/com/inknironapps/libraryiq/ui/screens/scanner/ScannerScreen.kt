@@ -20,8 +20,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,12 +33,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +54,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -109,8 +117,52 @@ fun ScannerScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            // External scanner / manual ISBN entry
+            var manualIsbn by remember { mutableStateOf("") }
+            val submitIsbn = {
+                val cleaned = manualIsbn.trim()
+                if (cleaned.length == 13 &&
+                    (cleaned.startsWith("978") || cleaned.startsWith("979")) &&
+                    cleaned.all { it.isDigit() }
+                ) {
+                    viewModel.onBarcodeDetected(cleaned)
+                    manualIsbn = ""
+                }
+            }
+            OutlinedTextField(
+                value = manualIsbn,
+                onValueChange = { input ->
+                    // Only allow digits
+                    val filtered = input.filter { it.isDigit() }
+                    manualIsbn = filtered
+                    // Auto-submit when a full ISBN-13 is entered (external scanners type fast)
+                    if (filtered.length == 13 &&
+                        (filtered.startsWith("978") || filtered.startsWith("979"))
+                    ) {
+                        viewModel.onBarcodeDetected(filtered)
+                        manualIsbn = ""
+                    }
+                },
+                label = { Text("ISBN (external scanner or manual)") },
+                placeholder = { Text("978...") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Search
+                ),
+                keyboardActions = KeyboardActions(onSearch = { submitIsbn() }),
+                trailingIcon = {
+                    IconButton(onClick = submitIsbn) {
+                        Icon(Icons.Default.Search, contentDescription = "Look up ISBN")
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             )
         } else {
             // Show lookup result
