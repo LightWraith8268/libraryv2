@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.34] - 2026-03-08
+
+### Added
+- Add external barcode scanner and manual ISBN entry support
+
 ## [1.8.33] - 2026-02-14
 
 ### Changed
