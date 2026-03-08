@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.38] - 2026-03-08
+
+### Changed
+- Strip covers from scrapers that return a different book
+
 ## [1.8.37] - 2026-03-08
 
 ### Fixed
