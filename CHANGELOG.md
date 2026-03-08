@@ -4,6 +4,11 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.35] - 2026-03-08
+
+### Fixed
+- Fix external scanner triggering back navigation
+
 ## [1.8.34] - 2026-03-08
 
 ### Added
