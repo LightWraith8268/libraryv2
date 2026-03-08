@@ -5,7 +5,11 @@ import com.inknironapps.libraryiq.data.remote.BookApiService
 import com.inknironapps.libraryiq.data.remote.HardcoverApiService
 import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
+import com.inknironapps.libraryiq.data.remote.HathiTrustApiService
+import com.inknironapps.libraryiq.data.remote.NytBooksApiService
+import com.inknironapps.libraryiq.data.remote.OpenBdApiService
 import com.inknironapps.libraryiq.data.remote.PrhApiService
+import com.inknironapps.libraryiq.data.remote.WikidataApiService
 import com.inknironapps.libraryiq.util.DebugLog
 import dagger.Module
 import dagger.Provides
@@ -131,5 +135,69 @@ object NetworkModule {
     @Singleton
     fun providePrhApiService(@Named("prh") retrofit: Retrofit): PrhApiService {
         return retrofit.create(PrhApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    @Named("hathiTrust")
+    fun provideHathiTrustRetrofit(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(HathiTrustApiService.BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideHathiTrustApiService(@Named("hathiTrust") retrofit: Retrofit): HathiTrustApiService {
+        return retrofit.create(HathiTrustApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    @Named("wikidata")
+    fun provideWikidataRetrofit(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(WikidataApiService.BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideWikidataApiService(@Named("wikidata") retrofit: Retrofit): WikidataApiService {
+        return retrofit.create(WikidataApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    @Named("openBd")
+    fun provideOpenBdRetrofit(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(OpenBdApiService.BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideOpenBdApiService(@Named("openBd") retrofit: Retrofit): OpenBdApiService {
+        return retrofit.create(OpenBdApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    @Named("nytBooks")
+    fun provideNytBooksRetrofit(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(NytBooksApiService.BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideNytBooksApiService(@Named("nytBooks") retrofit: Retrofit): NytBooksApiService {
+        return retrofit.create(NytBooksApiService::class.java)
     }
 }

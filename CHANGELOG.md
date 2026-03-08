@@ -4,6 +4,18 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.35] - 2026-03-08
+
+### Added
+- HathiTrust Bibliographic API integration (free, no key) — library-quality MARC data, OCLC/LCCN identifiers for 17.8M+ volumes
+- Wikidata SPARQL integration (free, no key) — linked data for original titles, languages, genres, series, and awards (CC0)
+- OpenBD API integration (free, no key) — publisher-curated metadata for Japanese commercial books via JPRO, includes ONIX descriptions and cover images
+- NYT Books API integration (free key) — bestseller rank history, weeks-on-list, and book review summaries from the New York Times
+
+### Changed
+- Metadata lookup now queries 17 sources in parallel (was 13) — added HathiTrust, Wikidata, OpenBD, NYT Books
+- Amazon title+author fallback now considers PRH, HathiTrust, and OpenBD titles for retry
+
 ## [1.8.34] - 2026-03-07
 
 ### Added
