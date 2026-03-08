@@ -6,7 +6,6 @@ import com.inknironapps.libraryiq.data.remote.HardcoverApiService
 import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.HathiTrustApiService
-import com.inknironapps.libraryiq.data.remote.NytBooksApiService
 import com.inknironapps.libraryiq.data.remote.OpenBdApiService
 import com.inknironapps.libraryiq.data.remote.PrhApiService
 import com.inknironapps.libraryiq.data.remote.WikidataApiService
@@ -185,19 +184,4 @@ object NetworkModule {
         return retrofit.create(OpenBdApiService::class.java)
     }
 
-    @Provides
-    @Singleton
-    @Named("nytBooks")
-    fun provideNytBooksRetrofit(): Retrofit {
-        return Retrofit.Builder()
-            .baseUrl(NytBooksApiService.BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-    }
-
-    @Provides
-    @Singleton
-    fun provideNytBooksApiService(@Named("nytBooks") retrofit: Retrofit): NytBooksApiService {
-        return retrofit.create(NytBooksApiService::class.java)
-    }
 }

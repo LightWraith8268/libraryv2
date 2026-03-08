@@ -50,10 +50,6 @@ android {
             ?: ""
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
 
-        val nytApiKey = localProps.getProperty("NYT_API_KEY")
-            ?: System.getenv("NYT_API_KEY")
-            ?: ""
-        buildConfigField("String", "NYT_API_KEY", "\"$nytApiKey\"")
     }
 
     signingConfigs {

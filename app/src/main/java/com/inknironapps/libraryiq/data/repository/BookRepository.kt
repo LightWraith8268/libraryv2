@@ -18,7 +18,6 @@ import com.inknironapps.libraryiq.data.remote.ITunesApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryApiService
 import com.inknironapps.libraryiq.data.remote.OpenLibraryEdition
 import com.inknironapps.libraryiq.data.remote.HathiTrustApiService
-import com.inknironapps.libraryiq.data.remote.NytBooksApiService
 import com.inknironapps.libraryiq.data.remote.OpenBdApiService
 import com.inknironapps.libraryiq.data.remote.PrhApiService
 import com.inknironapps.libraryiq.data.remote.TargetScraper
@@ -71,7 +70,6 @@ class BookRepository @Inject constructor(
     private val hathiTrustApiService: HathiTrustApiService,
     private val wikidataApiService: WikidataApiService,
     private val openBdApiService: OpenBdApiService,
-    private val nytBooksApiService: NytBooksApiService,
     private val firestoreSync: FirestoreSync
 ) {
     fun getAllBooks(): Flow<List<Book>> = bookDao.getAllBooks()
@@ -344,11 +342,10 @@ class BookRepository @Inject constructor(
             val ht = async { tryHathiTrust(isbn) }
             val wd = async { tryWikidata(isbn) }
             val obd = async { tryOpenBd(isbn) }
-            val nyt = async { tryNytBooks(isbn) }
             val amz = async { tryAmazon(isbn) }
             val bn = async { tryBarnesNoble(isbn) }
             val tgt = async { tryTarget(isbn) }
-            arrayOf(gb.await(), ol.await(), hc.await(), prh.await(), ht.await(), wd.await(), obd.await(), nyt.await(), amz.await(), bn.await(), tgt.await())
+            arrayOf(gb.await(), ol.await(), hc.await(), prh.await(), ht.await(), wd.await(), obd.await(), amz.await(), bn.await(), tgt.await())
         }
         val googleBook = parallelResults[0]
         val openLibraryBook = parallelResults[1]
@@ -357,10 +354,9 @@ class BookRepository @Inject constructor(
         val hathiTrustBook = parallelResults[4]
         val wikidataBook = parallelResults[5]
         val openBdBook = parallelResults[6]
-        val nytBook = parallelResults[7]
-        val amazonBook = parallelResults[8]
-        val bnBook = parallelResults[9]
-        val targetBook = parallelResults[10]
+        val amazonBook = parallelResults[7]
+        val bnBook = parallelResults[8]
+        val targetBook = parallelResults[9]
 
         diag.add(if (googleBook != null) "GB(isbn): ${googleBook.title}" else "GB(isbn): miss")
 
@@ -384,7 +380,6 @@ class BookRepository @Inject constructor(
         diag.add(if (hathiTrustBook != null) "HT: ${hathiTrustBook.title}" else "HT: miss")
         diag.add(if (wikidataBook != null) "WD: ${wikidataBook.title}" else "WD: miss")
         diag.add(if (openBdBook != null) "OBD: ${openBdBook.title}" else "OBD: miss")
-        diag.add(if (nytBook != null) "NYT: ${nytBook.title}" else "NYT: miss")
         diag.add(if (amazonBook != null) "AMZ: ${amazonBook.title}" else "AMZ: miss")
         diag.add(if (bnBook != null) "BN: ${bnBook.title}" else "BN: miss")
         diag.add(if (targetBook != null) "TGT: ${targetBook.title}" else "TGT: miss")
@@ -413,7 +408,7 @@ class BookRepository @Inject constructor(
         // "first non-null wins" fields like coverUrl, language, format.
         val isbnSources = listOfNotNull(
             hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book,
-            prhBook, hathiTrustBook, wikidataBook, openBdBook, nytBook,
+            prhBook, hathiTrustBook, wikidataBook, openBdBook,
             amazonBook, amazonTitleBook, bnBook, targetBook
         )
 
@@ -429,7 +424,7 @@ class BookRepository @Inject constructor(
         // searches (Tier 3) never auto-assign covers.
         val apiSources = listOfNotNull(
             hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book,
-            prhBook, hathiTrustBook, wikidataBook, openBdBook, nytBook
+            prhBook, hathiTrustBook, wikidataBook, openBdBook
         )
         val apiTitle = apiSources
             .map { it.title }
@@ -643,7 +638,6 @@ class BookRepository @Inject constructor(
         if (hathiTrustBook != null) sources.add("HathiTrust")
         if (wikidataBook != null) sources.add("Wikidata")
         if (openBdBook != null) sources.add("OpenBD")
-        if (nytBook != null) sources.add("NYT Books")
         if (amazonBook != null || amazonTitleBook != null) sources.add("Amazon")
         if (bnBook != null) sources.add("Barnes & Noble")
         if (targetBook != null) sources.add("Target")
@@ -1104,47 +1098,6 @@ class BookRepository @Inject constructor(
             }
         } catch (e: Exception) {
             DebugLog.d(TAG, "OpenBD: miss (${e.javaClass.simpleName})")
-            null
-        }
-    }
-
-    private suspend fun tryNytBooks(isbn: String): Book? {
-        val apiKey = BuildConfig.NYT_API_KEY
-        if (apiKey.isBlank()) return null
-        return try {
-            // Try bestseller history first (has description + rank data)
-            val bsResponse = nytBooksApiService.getBestsellerHistory(isbn, apiKey)
-            val entry = bsResponse.results?.firstOrNull()
-            if (entry != null) {
-                val bestRank = entry.ranksHistory?.minByOrNull { it.rank ?: Int.MAX_VALUE }
-                val rankInfo = bestRank?.let {
-                    "NYT Bestseller: #${it.rank} on ${it.displayName ?: it.listName}" +
-                        (it.weeksOnList?.let { w -> " ($w weeks)" } ?: "")
-                }
-                return Book(
-                    title = entry.title ?: "Unknown Title",
-                    author = entry.author ?: "Unknown Author",
-                    isbn = isbn,
-                    publisher = entry.publisher,
-                    description = entry.description?.takeIf { it.isNotBlank() },
-                    tags = rankInfo
-                ).also {
-                    DebugLog.d(TAG, "NYT: '${it.title}' — $rankInfo")
-                }
-            }
-            // Fall back to reviews endpoint
-            val revResponse = nytBooksApiService.getReviews(isbn, apiKey)
-            val review = revResponse.results?.firstOrNull() ?: return null
-            Book(
-                title = review.bookTitle ?: "Unknown Title",
-                author = review.bookAuthor ?: "Unknown Author",
-                isbn = isbn,
-                description = review.summary?.takeIf { it.isNotBlank() }
-            ).also {
-                DebugLog.d(TAG, "NYT: '${it.title}' — review found")
-            }
-        } catch (e: Exception) {
-            DebugLog.d(TAG, "NYT: miss (${e.javaClass.simpleName})")
             null
         }
     }
