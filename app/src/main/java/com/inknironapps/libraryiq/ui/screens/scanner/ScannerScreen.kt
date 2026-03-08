@@ -136,16 +136,11 @@ fun ScannerScreen(
             OutlinedTextField(
                 value = manualIsbn,
                 onValueChange = { input ->
-                    // Only allow digits
-                    val filtered = input.filter { it.isDigit() }
-                    manualIsbn = filtered
-                    // Auto-submit when a full ISBN-13 is entered (external scanners type fast)
-                    if (filtered.length == 13 &&
-                        (filtered.startsWith("978") || filtered.startsWith("979"))
-                    ) {
-                        viewModel.onBarcodeDetected(filtered)
-                        manualIsbn = ""
-                    }
+                    // Only allow digits; don't auto-submit here because external
+                    // scanners send Enter after the digits – if we submit in
+                    // onValueChange the text field is removed before Enter arrives,
+                    // and the orphaned Enter key triggers back-navigation.
+                    manualIsbn = input.filter { it.isDigit() }
                 },
                 label = { Text("ISBN (external scanner or manual)") },
                 placeholder = { Text("978...") },
