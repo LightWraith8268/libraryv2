@@ -33,8 +33,13 @@ interface OpenLibraryApiService {
         const val BASE_URL = "https://openlibrary.org/"
         const val COVERS_BASE = "https://covers.openlibrary.org/b/id/"
 
+        /** Returns a cover URL by cover ID. Uses ?default=false to get 404 instead of 1x1 pixel placeholder. */
         fun coverUrl(coverId: Long, size: String = "M"): String =
-            "${COVERS_BASE}${coverId}-${size}.jpg"
+            "${COVERS_BASE}${coverId}-${size}.jpg?default=false"
+
+        /** Returns a cover URL by ISBN. Uses ?default=false to get 404 instead of 1x1 pixel placeholder. */
+        fun coverUrlByIsbn(isbn: String, size: String = "L"): String =
+            "https://covers.openlibrary.org/b/isbn/${isbn}-${size}.jpg?default=false"
     }
 }
 

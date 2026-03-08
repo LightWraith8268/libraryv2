@@ -395,8 +395,10 @@ class BookRepository @Inject constructor(
             return LookupResult(null, diagStr)
         }
 
-        // Get the consensus title from API sources (trusted, ISBN-validated) to
-        // detect when scrapers returned a completely different book.
+        // Tiered cover assignment: only ISBN-validated API sources (Tier 1)
+        // auto-assign covers. Scrapers (Tier 2) can only fill in if no API
+        // source had a cover AND the scraper's title matches. Target/title
+        // searches (Tier 3) never auto-assign covers.
         val apiSources = listOfNotNull(
             hardcoverBook, openLibraryBook, googleBook, googleGeneralBook, googleIsbn10Book
         )
@@ -405,23 +407,35 @@ class BookRepository @Inject constructor(
             .firstOrNull { it != "Unknown Title" }
             ?.lowercase()?.trim()
 
-        // Strip covers from scraper results whose title doesn't match the API
-        // consensus. Scrapers do keyword searches and can return a completely
-        // different book (different title and author).
+        // Strip ALL scraper covers initially — scrapers contribute metadata
+        // but their covers are only used as Tier 2 fallback below.
         val sanitizedSources = isbnSources.map { book ->
             val isScraper = book === amazonBook || book === amazonTitleBook ||
                 book === bnBook || book === targetBook
-            if (isScraper && apiTitle != null && book.coverUrl != null) {
-                val scraperTitle = book.title.lowercase().trim()
-                if (scraperTitle != apiTitle && !scraperTitle.contains(apiTitle) && !apiTitle.contains(scraperTitle)) {
-                    DebugLog.d(TAG, "Stripping cover from mismatched scraper: '${book.title}' vs API '$apiTitle'")
-                    book.copy(coverUrl = null)
-                } else book
+            if (isScraper && book.coverUrl != null) {
+                book.copy(coverUrl = null)
             } else book
         }
 
         var merged = sanitizedSources.drop(1).fold(sanitizedSources.first()) { acc, book ->
             mergeBooks(acc, book)
+        }
+
+        // Tier 2: If no API source had a cover, try scrapers whose title matches
+        if (merged.coverUrl == null && apiTitle != null) {
+            val tier2Sources = listOfNotNull(amazonBook, bnBook)
+            for (scraper in tier2Sources) {
+                if (scraper.coverUrl != null) {
+                    val scraperTitle = scraper.title.lowercase().trim()
+                    if (scraperTitle == apiTitle || scraperTitle.contains(apiTitle) || apiTitle.contains(scraperTitle)) {
+                        DebugLog.d(TAG, "Tier 2 cover from ${scraper.publisher ?: "scraper"}: title matches API")
+                        merged = merged.copy(coverUrl = scraper.coverUrl)
+                        break
+                    } else {
+                        DebugLog.d(TAG, "Tier 2 cover rejected: '${scraper.title}' vs API '$apiTitle'")
+                    }
+                }
+            }
         }
 
         // Consensus-based author selection: when multiple sources return different
@@ -580,7 +594,7 @@ class BookRepository @Inject constructor(
         // Apple Books searches by title+author and may return a different edition's cover
         // (e.g. paperback cover instead of deluxe hardcover).
         if (merged.coverUrl == null) {
-            val appleCover = tryAppleBooksCover(merged.title, merged.author)
+            val appleCover = tryAppleBooksCover(isbn, merged.title, merged.author)
             if (appleCover != null) {
                 merged = merged.copy(coverUrl = appleCover)
                 diag.add("Apple: cover (fallback)")
@@ -931,7 +945,7 @@ class BookRepository @Inject constructor(
             if (!isbn.isNullOrBlank()) {
                 covers.add(CoverOption(
                     "Open Library",
-                    "https://covers.openlibrary.org/b/isbn/$isbn-L.jpg"
+                    OpenLibraryApiService.coverUrlByIsbn(isbn)
                 ))
             }
 
@@ -949,7 +963,7 @@ class BookRepository @Inject constructor(
             }
 
             // iTunes (Apple Books covers)
-            jobs.add(async { fetchITunesCovers(title, author) })
+            jobs.add(async { fetchITunesCovers(isbn, title, author) })
 
             for (job in jobs) {
                 try {
@@ -1042,9 +1056,19 @@ class BookRepository @Inject constructor(
         return results
     }
 
-    private suspend fun fetchITunesCovers(title: String, author: String): List<CoverOption> {
+    private suspend fun fetchITunesCovers(isbn: String?, title: String, author: String): List<CoverOption> {
         val results = mutableListOf<CoverOption>()
         try {
+            // Try direct ISBN lookup first (exact match, no search ambiguity)
+            if (!isbn.isNullOrBlank()) {
+                val lookupResponse = iTunesApiService.lookupByIsbn(isbn)
+                lookupResponse.results?.forEach { result ->
+                    result.getHighResCoverUrl()?.let { url ->
+                        results.add(CoverOption("Apple Books (ISBN)", url))
+                    }
+                }
+            }
+            // Fall back to title+author search for additional options
             val searchTerm = if (author != "Unknown Author") "$title $author" else title
             val response = iTunesApiService.searchEbooks(searchTerm)
             response.results?.take(3)?.forEach { result ->
@@ -1059,11 +1083,21 @@ class BookRepository @Inject constructor(
     }
 
     /**
-     * Fetches the best Apple Books cover for a book by title+author.
-     * Returns the first matching high-res (600x600) cover URL, or null.
+     * Fetches the best Apple Books cover for a book.
+     * Tries direct ISBN lookup first (exact match), then falls back to title+author search.
      */
-    private suspend fun tryAppleBooksCover(title: String, author: String): String? {
+    private suspend fun tryAppleBooksCover(isbn: String?, title: String, author: String): String? {
         return try {
+            // Try direct ISBN lookup first
+            if (!isbn.isNullOrBlank()) {
+                val lookupResponse = iTunesApiService.lookupByIsbn(isbn)
+                val isbnCover = lookupResponse.results?.firstOrNull()?.getHighResCoverUrl()
+                if (isbnCover != null) {
+                    DebugLog.d(TAG, "Apple Books cover: found via ISBN lookup")
+                    return isbnCover
+                }
+            }
+            // Fall back to title+author search
             val searchTerm = if (author != "Unknown Author") "$title $author" else title
             val response = iTunesApiService.searchEbooks(searchTerm, limit = 1)
             response.results?.firstOrNull()?.getHighResCoverUrl().also {
