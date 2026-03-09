@@ -4,43 +4,33 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.8.40] - 2026-03-08
-
-### Added
-- Implement tiered cover assignment and improve cover sources
-
-### Changed
-- Improve cover reliability across the app
-
-## [1.8.39] - 2026-03-08
-
-### Changed
-- Improve cover reliability across the app
-
-## [1.8.38] - 2026-03-08
-
-### Changed
-- Strip covers from scrapers that return a different book
-
-## [1.8.37] - 2026-03-08
-
-### Fixed
-- Fix wrong cover from title-based enrichment
-
-## [1.8.36] - 2026-03-08
-
-### Changed
-- Auto-focus ISBN field without opening soft keyboard
-
 ## [1.8.35] - 2026-03-08
 
-### Fixed
-- Fix external scanner triggering back navigation
+### Added
+- HathiTrust Bibliographic API integration (free, no key) — library-quality MARC data, OCLC/LCCN identifiers for 17.8M+ volumes
+- Wikidata SPARQL integration (free, no key) — linked data for original titles, languages, genres, series, and awards (CC0)
+- OpenBD API integration (free, no key) — publisher-curated metadata for Japanese commercial books via JPRO, includes ONIX descriptions and cover images
 
-## [1.8.34] - 2026-03-08
+### Changed
+- Metadata lookup now queries 16 sources in parallel (was 13) — added HathiTrust, Wikidata, OpenBD
+- Amazon title+author fallback now considers PRH, HathiTrust, and OpenBD titles for retry
+
+## [1.8.34] - 2026-03-07
 
 ### Added
-- Add external barcode scanner and manual ISBN entry support
+- Penguin Random House API integration (free, no key) — best-in-class descriptions via `flapcopy`, BISAC genre codes, format info, and imprint data for ~25% of English-language books
+- Google Books `seriesInfo` parsing — free series number data for ~40% of series books
+- Google Books `subtitle` field — cleaner "Title: Subtitle" display
+- Google Books two-step volume lookup — fetches full volume details by ID for higher-res images, complete metadata, and series info
+- iTunes/Apple Books `genres[]` field parsing for better genre data
+- Hardcover `edition_format` field for physical format detection (Hardcover, Paperback, etc.)
+- Hardcover `cached_tags` field for user-generated genre/mood tags
+- Open Library `edition_name`, `genres[]`, `dewey_decimal_class[]`, `lc_classifications[]` fields for richer edition and classification data
+- Comprehensive book metadata API research document (20+ sources analyzed)
+
+### Changed
+- Metadata lookup now queries 13 sources in parallel (was 12) — added Penguin Random House
+- Bulk library metadata refresh now also updates tags and metadata sources fields
 
 ## [1.8.33] - 2026-02-14
 

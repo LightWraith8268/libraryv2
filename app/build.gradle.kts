@@ -49,6 +49,7 @@ android {
             ?: System.getenv("GITHUB_TOKEN")
             ?: ""
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
+
     }
 
     signingConfigs {

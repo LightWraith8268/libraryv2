@@ -292,9 +292,11 @@ class SettingsViewModel @Inject constructor(
                             goodreadsId = fresh.goodreadsId?.takeIf { it.isNotBlank() } ?: book.goodreadsId,
                             openLibraryId = fresh.openLibraryId?.takeIf { it.isNotBlank() } ?: book.openLibraryId,
                             hardcoverId = fresh.hardcoverId ?: book.hardcoverId,
+                            tags = fresh.tags?.takeIf { it.isNotBlank() } ?: book.tags,
                             edition = fresh.edition?.takeIf { it.isNotBlank() } ?: book.edition,
                             originalTitle = fresh.originalTitle?.takeIf { it.isNotBlank() } ?: book.originalTitle,
-                            originalLanguage = fresh.originalLanguage?.takeIf { it.isNotBlank() } ?: book.originalLanguage
+                            originalLanguage = fresh.originalLanguage?.takeIf { it.isNotBlank() } ?: book.originalLanguage,
+                            metadataSources = fresh.metadataSources?.takeIf { it.isNotBlank() } ?: book.metadataSources
                         )
                         bookRepository.updateBook(merged)
                         updated++

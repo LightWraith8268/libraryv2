@@ -39,6 +39,7 @@ data class ITunesResult(
     val artworkUrl60: String?,
     val artworkUrl100: String?,
     val primaryGenreName: String?,
+    val genres: List<String>?,
     val releaseDate: String?,
     val description: String?,
     val trackViewUrl: String?
