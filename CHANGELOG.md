@@ -4,6 +4,21 @@ All notable changes to LibraryIQ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.42] - 2026-03-09
+
+### Added
+- Add 4 new metadata sources: HathiTrust, Wikidata, OpenBD, NYT Books
+- Add comprehensive book metadata sources research (60+ sources)
+- Add 7 metadata quick wins and Penguin Random House API integration
+- Implement tiered cover assignment and improve cover sources
+
+### Changed
+- Remove NYT Books API integration
+- Improve cover reliability across the app
+
+### Fixed
+- Fix missing Box import in BookDetailScreen
+
 ## [1.8.41] - 2026-03-09
 
 ### Added
